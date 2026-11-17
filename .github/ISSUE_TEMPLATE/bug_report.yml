@@ -1,0 +1,45 @@
+name: 缺陷反馈 (Bug Report)
+description: 反馈子代理调度、回调唤醒、沙箱隔离或 Pi 调度台面板的异常行为
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！提交前请确认粘贴的日志或截图中**不包含** API Key、OAuth Token 或私有仓库敏感路径。
+  - type: dropdown
+    id: host
+    attributes:
+      label: 宿主客户端 (Host Client)
+      options:
+        - Google Antigravity
+        - Claude Code
+        - OpenAI Codex
+        - 其他 MCP 客户端 / 仅 Web 调度台
+    validations:
+      required: true
+  - type: dropdown
+    id: sandbox
+    attributes:
+      label: 沙箱档位 (Sandbox Mode)
+      options:
+        - strict（默认严格隔离）
+        - dev（开发模式）
+        - bypass（完全放开路径）
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: 运行环境版本
+      description: 请填写 macOS、Node.js 与 Pi CLI 版本（可通过 node -v && pi --version 查看）
+      placeholder: "macOS 15.4 / Node v22.22.2 / Pi 1.1.0"
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤与实际表现
+      description: 说明调用了哪个工具或页面操作、实际报了什么错、预期应该发生什么
+    validations:
+      required: true

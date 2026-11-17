@@ -1,0 +1,18 @@
+name: 功能建议 (Feature Request)
+description: 提议新的宿主适配、MCP 调度能力、模型额度渠道或面板改进
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你遇到了什么实际场景或痛点？
+      placeholder: "例如：希望在某宿主下自动将子代理绑定到工作区会话，或新增某家服务商的套餐额度查询……"
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 你期望的做法或接口形式
+    validations:
+      required: true
