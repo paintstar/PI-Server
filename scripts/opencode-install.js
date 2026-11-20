@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { opencodeConfigDir, opencodeConfigFile, opencodeSkillFile, parseJsonc, removeJsoncMcpServer } from '../src/opencode-config.js';
+import { opencodeConfigDir, opencodeConfigFile, opencodeSkillFile, upsertJsoncMcpServer, removeJsoncMcpServer } from '../src/opencode-config.js';
 
 function atomicWriteText(file, content, mode = 0o644) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -49,15 +49,10 @@ Use \`pi-subagents\` only when the user explicitly authorizes external model del
 `;
 
 function writeOpencodeMcpDirect(configFile, name, command, env) {
-  let data = {};
-  if (fs.existsSync(configFile)) {
-    data = parseJsonc(fs.readFileSync(configFile, 'utf8'));
-  }
-  if (!data || typeof data !== 'object' || Array.isArray(data)) data = {};
-  if (!data.mcp || typeof data.mcp !== 'object') data.mcp = {};
-  if (!data.mcp.servers || typeof data.mcp.servers !== 'object') data.mcp.servers = {};
-  data.mcp.servers[name] = { type: 'local', command, environment: env };
-  atomicWriteText(configFile, `${JSON.stringify(data, null, 2)}\n`);
+  const raw = fs.existsSync(configFile) ? fs.readFileSync(configFile, 'utf8') : '';
+  const updated = upsertJsoncMcpServer(raw, name, { type: 'local', command, environment: env });
+  const mode = fs.existsSync(configFile) ? (fs.statSync(configFile).mode & 0o777) : 0o644;
+  atomicWriteText(configFile, updated, mode || 0o644);
 }
 
 function reloadOpencodeService(opencodeBin, processEnv) {

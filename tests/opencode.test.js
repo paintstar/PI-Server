@@ -12,7 +12,7 @@ import { Callbacks, readCallbackRecord, deliveredCursorOf } from '../src/callbac
 import { parentIdentity } from '../src/controller-client.js';
 import { DashboardData } from '../src/dashboard-data.js';
 import { spawnReminder, waitReminder } from '../src/wait-reminder.js';
-import { parseJsonc, removeJsoncMcpServer, inspectOpencodeConfig } from '../src/opencode-config.js';
+import { parseJsonc, upsertJsoncMcpServer, removeJsoncMcpServer, inspectOpencodeConfig } from '../src/opencode-config.js';
 import { fileOperation } from '../src/tool-sandbox.js';
 import { setup, spawn, settled, processFactory } from './helpers/setup.js';
 
@@ -228,6 +228,15 @@ test('removeJsoncMcpServer preserves comments and unrelated servers across first
 
   const noop = removeJsoncMcpServer(lastRemoved.content, 'missing');
   assert.equal(noop.changed, false);
+
+  const inserted = upsertJsoncMcpServer(lastRemoved.content, 'pi-subagents', { type: 'local', command: ['node', 'src/server.js'] });
+  assert.match(inserted, /\/\/ Top comment/);
+  assert.match(inserted, /\/\/ Keep alpha/);
+  assert.deepEqual(Object.keys(parseJsonc(inserted).mcp.servers), ['alpha', 'pi-subagents']);
+
+  const replaced = upsertJsoncMcpServer(inserted, 'pi-subagents', { type: 'local', command: ['node', 'v2.js'] });
+  assert.match(replaced, /\/\/ Top comment/);
+  assert.deepEqual(parseJsonc(replaced).mcp.servers['pi-subagents'].command, ['node', 'v2.js']);
 });
 
 test('install.js installs and uninstalls OpenCode MCP entry and skill with 0600 backup while preserving comments', t => {

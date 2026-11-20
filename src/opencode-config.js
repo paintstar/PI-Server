@@ -155,6 +155,75 @@ function findObjectProperty(tokens, objStart, key) {
   return null;
 }
 
+function indentJson(value, indent) {
+  return JSON.stringify(value, null, 2).replace(/\n/g, `\n${indent}`);
+}
+
+function lineIndentAt(source, pos) {
+  const lineStart = source.lastIndexOf('\n', pos - 1) + 1;
+  const match = /^[ \t]*/.exec(source.slice(lineStart, pos));
+  return match ? match[0] : '';
+}
+
+function insertObjectProperty(source, tokens, objStart, key, value) {
+  const closeIdx = skipValue(tokens, objStart) - 1;
+  const closeTok = tokens[closeIdx];
+  if (!closeTok || closeTok.type !== '}') return null;
+  const closeIndent = lineIndentAt(source, closeTok.start);
+  const propIndent = `${closeIndent}  `;
+  const formatted = `${JSON.stringify(key)}: ${indentJson(value, propIndent)}`;
+  if (closeIdx === objStart + 1) {
+    return `${source.slice(0, tokens[objStart].end)}\n${propIndent}${formatted}\n${closeIndent}${source.slice(closeTok.start)}`;
+  }
+  const prevTok = tokens[closeIdx - 1];
+  const needsComma = prevTok.type !== ',';
+  const insertAt = prevTok.end;
+  const comma = needsComma ? ',' : '';
+  return `${source.slice(0, insertAt)}${comma}\n${propIndent}${formatted}${source.slice(insertAt)}`;
+}
+
+export function upsertJsoncMcpServer(source, serverName, entry) {
+  if (!source || !source.trim()) {
+    return `${JSON.stringify({ mcp: { servers: { [serverName]: entry } } }, null, 2)}\n`;
+  }
+  const tokens = tokenizeJsonc(source);
+  let next = null;
+  if (tokens[0]?.type === '{') {
+    const mcpProp = findObjectProperty(tokens, 0, 'mcp');
+    if (mcpProp && tokens[mcpProp.valStart]?.type === '{') {
+      const serversProp = findObjectProperty(tokens, mcpProp.valStart, 'servers');
+      if (serversProp && tokens[serversProp.valStart]?.type === '{') {
+        const target = findObjectProperty(tokens, serversProp.valStart, serverName);
+        if (target) {
+          const propIndent = lineIndentAt(source, target.keyTok.start);
+          const valStartTok = tokens[target.valStart];
+          next = source.slice(0, valStartTok.start) + indentJson(entry, propIndent) + source.slice(target.valEndTok.end);
+        } else {
+          next = insertObjectProperty(source, tokens, serversProp.valStart, serverName, entry);
+        }
+      } else if (!serversProp) {
+        next = insertObjectProperty(source, tokens, mcpProp.valStart, 'servers', { [serverName]: entry });
+      }
+    } else if (!mcpProp) {
+      next = insertObjectProperty(source, tokens, 0, 'mcp', { servers: { [serverName]: entry } });
+    }
+  }
+  if (next !== null) {
+    try {
+      parseJsonc(next);
+      return next;
+    } catch {
+      next = null;
+    }
+  }
+  const parsed = parseJsonc(source);
+  const data = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  if (!data.mcp || typeof data.mcp !== 'object') data.mcp = {};
+  if (!data.mcp.servers || typeof data.mcp.servers !== 'object') data.mcp.servers = {};
+  data.mcp.servers[serverName] = entry;
+  return `${JSON.stringify(data, null, 2)}\n`;
+}
+
 export function removeJsoncMcpServer(source, serverName) {
   const tokens = tokenizeJsonc(source);
   if (tokens[0]?.type !== '{') return { changed: false, content: source };
