@@ -6,15 +6,15 @@
 
 开发与完整测试需要以下环境：
 
-- **操作系统**：macOS（完整测试会真实调用 `/usr/bin/sandbox-exec` 验证 Seatbelt 沙箱隔离）
+- **操作系统**：macOS（内置 `/usr/bin/sandbox-exec`）或 Linux / Windows WSL2（需安装 `bubblewrap`：`sudo apt-get install -y bubblewrap`）
 - **Node.js**：`>= 22.19.0`
 - **Pi CLI**：`>= 1.0.2`（仅运行 `npm test` 时无需配置真实模型 Key，测试使用 `tests/helpers/fake-pi.js` 隔离模拟进程）
 
 克隆仓库并运行全量检查：
 
 ```bash
-git clone https://github.com/mumuxsy/pi-subagents.git
-cd pi-subagents
+git clone https://github.com/paintstar/PI-Server.git
+cd PI-Server
 npm ci --ignore-scripts
 npm run check
 npm test

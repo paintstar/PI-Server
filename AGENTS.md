@@ -18,14 +18,14 @@
 - `src/quota*.js`：只读读取 Pi 凭据查询 Codex、智谱 GLM / Z.ai、MiniMax、DeepSeek 和 OpenCode Go 额度或余额；固定接口域名，剥离账号隐私字段。
 - `src/controller*.js`：独立后台管理进程、私密 Unix Socket（持久连接、断连取消与新建代理即时唤醒长轮询）、宿主父会话身份识别与断线重连。
 - `src/manager.js`、`src/rpc-client.js`、`src/live-stream.js`：Pi RPC JSONL 子进程管理、会话生命周期、模型切换与实时流式输出镜像（`live.json`）。
-- `src/agent-policy.js`、`src/tool-sandbox.js`、`src/benchmark-profile.js`：模型白名单与用量限制、macOS Seatbelt 三档沙箱隔离、可选 `BENCHMARK_PROMPT_PROFILE=clean` 洁净评测上下文清理。
+- `src/agent-policy.js`、`src/tool-sandbox.js`、`src/linux-sandbox.js`、`src/benchmark-profile.js`：模型白名单与用量限制、macOS Seatbelt / Linux & WSL2 `bubblewrap` 三档沙箱隔离、可选 `BENCHMARK_PROMPT_PROFILE=clean` 洁净评测上下文清理。
 - `src/message-store.js`、`src/messages.js`、`src/wait-reminder.js`：幂等持久消息回执、子代理本地 HTTP 提问/汇报通道、`mustWait` 防遗忘提醒。
-- `src/callbacks.js`、`src/agent-changes.js`、`src/workspace.js`：三端回调唤醒（Antigravity `antigravityDeliveredSeq` 游标、Claude channel、`codex queue`）、只读 Git 工作树差异审查、独立 worktree 与共享 `ownedPaths` 校验。
+- `src/callbacks.js`、`src/opencode-config.js`、`src/agent-changes.js`、`src/workspace.js`：四端回调唤醒（Antigravity / OpenCode 统一单调游标、Claude channel、`codex queue`、可选 CLI 唤醒）、OpenCode JSONC 注释保留读写、只读 Git 工作树差异审查、独立 worktree 与共享 `ownedPaths` 校验。
 - `src/task-store.js`、`src/mcp-*.js`：MCP 2025-11-25 标准 Tasks、资源订阅、日志与进度通知。
 - `src/dashboard*.js`、`dashboard/`：“Pi 调度台”后端（SSE `/api/events`、`/api/agents/:id/live`、`/api/system`、60 秒缓存 `/api/quota`、`/api/settings*`、`dashboard.lock` 并发锁）与无外部前端框架依赖的 ES 模块化界面。
 - `extensions/`：注入新 Pi 子进程的权限沙箱扩展（`policy.ts`）与双向通信扩展（`communication.ts`）。
-- `scripts/`：语法检查、三端安装打包（含 Antigravity 插件校验）、`antigravity-hook.js`、`wait-events.js` 及真机验收脚本。
-- `tests/`：89 项隔离行为测试与单文件行数/注释卫生检查；`tests/helpers/` 为隔离 Pi 模拟进程。
+- `scripts/`：语法检查、四端安装打包（含 Antigravity 插件校验与 `opencode-install.js`）、`antigravity-hook.js`、`wait-events.js` 及真机验收脚本（含 `verify-opencode.js`）。
+- `tests/`：100 项隔离行为测试与单文件行数/注释卫生检查；`tests/helpers/` 为隔离 Pi 模拟进程。
 - `docs/`：协议与沙箱说明（`communication.md`）、验证矩阵（`verification.md`）与开源界面预览图（`assets/`）。
 - `.agents/`：本机运行状态、工作树与私密验证记录，由 `.gitignore` 排除。
 

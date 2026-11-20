@@ -30,7 +30,7 @@ node scripts/verify-opencode.js # 实测真实 OpenCode CLI 通过 stdio MCP 调
 | `tests/dashboard.test.js` | 只读快照不抢占归属、同源与令牌防护、思考文本展示且隐藏加密签名、实时 `live.json` 流式镜像、自定义标题/备注/置顶/归档/分组移动、SSE `/api/events` 推送、单文件行数与无注释卫生约束 |
 | `tests/model-settings.test.js` | API Key 与 OAuth 脱敏及 `0600` 备份、本机 Codex 登录导入与 JWT 校验、原型污染拦截、1M 上下文窗口同步 `models.json` 与 `modelOverrides`、`baseContextWindow` 基线恢复、禁用模型拦截 |
 | `tests/reliable-messages.test.js` | 消息回执幂等去重与冲突报错、请求前预检与挂钟超时终止、`maxTotalTokens` 排除重复 `cacheRead` 计数与 80% 预警、子进程退出清理 `runtimeTimer` |
-| `tests/tool-sandbox.test.js` | macOS Seatbelt `strict` / `dev` / `bypass` 三档文件读写、符号链接越界拦截、凭据与控制状态目录隔离、禁网拦截、取消时连带终止后代子进程 |
+| `tests/tool-sandbox.test.js` | macOS Seatbelt / Linux & WSL2 `bwrap` `strict` / `dev` / `bypass` 三档文件读写、符号链接越界拦截、凭据与控制状态目录隔离、禁网拦截、取消时连带终止后代子进程 |
 | `tests/mcp.test.js` & `tests/mcp-tasks.test.js` | 真实 MCP SDK 客户端连接、24 个工具发现、标准 MCP Tasks 状态机、取消与 TTL 过期清理、资源订阅通知 |
 | `tests/quota.test.js` & `tests/quota-providers.test.js` | Codex、GLM / Z.ai、MiniMax Token Plan、DeepSeek、OpenCode Go 额度与余额解析、过期凭据前置报错、隐私身份字段剥离 |
 | `tests/workspace.test.js`、`tests/lifecycle.test.js`、`tests/models.test.js`、`tests/recovery.test.js` | 并行 Git worktree 分支隔离、脏工作区显式决策、空闲模型切换与 `next_run` 自动恢复、关闭后恢复不重放历史任务 |

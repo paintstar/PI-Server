@@ -4,7 +4,7 @@
   <p><strong>Multi-Model Subagent Orchestration MCP & Real-Time Local Console for Antigravity, Claude Code, Codex, and OpenCode</strong></p>
 
   <p>
-    <a href="https://github.com/mumuxsy/pi-subagents/actions/workflows/ci.yml"><img src="https://github.com/mumuxsy/pi-subagents/actions/workflows/ci.yml/badge.svg" alt="CI Status" /></a>
+    <a href="https://github.com/paintstar/PI-Server/actions/workflows/ci.yml"><img src="https://github.com/paintstar/PI-Server/actions/workflows/ci.yml/badge.svg" alt="CI Status" /></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License" /></a>
     <img src="https://img.shields.io/badge/Node.js-%3E%3D22.19-339933?logo=nodedotjs&logoColor=white" alt="Node >= 22.19" />
     <img src="https://img.shields.io/badge/MCP_SDK-1.26.0_(24_Tools)-e27448" alt="MCP SDK 1.26.0" />
@@ -22,7 +22,7 @@
 
 ---
 
-**Pi Subagents** wraps your local [Pi Coding Agent](https://pi.dev) runtime into a host-agnostic Model Context Protocol (MCP) orchestration server paired with a dependency-free real-time web console (**Pi Dispatch Console** at `http://127.0.0.1:3141/`). Your primary agent decomposes work, selects models from structured capability profiles, and verifies results, while isolated Pi subagents execute tasks in dedicated Git worktrees under macOS Seatbelt sandboxing—with durable disconnect recovery, blocking parent Q&A, and native wake-up hooks.
+**Pi Subagents** wraps your local [Pi Coding Agent](https://pi.dev) runtime into a host-agnostic Model Context Protocol (MCP) orchestration server paired with a dependency-free real-time web console (**Pi Dispatch Console** at `http://127.0.0.1:3141/`). Your primary agent decomposes work, selects models from structured capability profiles, and verifies results, while isolated Pi subagents execute tasks in dedicated Git worktrees under OS-level sandboxing (macOS Seatbelt / Linux & WSL2 `bubblewrap`)—with durable disconnect recovery, blocking parent Q&A, and native wake-up hooks.
 
 ## Key Highlights
 
@@ -31,7 +31,7 @@
 - **Durable Two-Way Messaging & Blocking `ask_parent`**: Subagents report milestones via `agent_message`, coordinate with sibling workers, or pause on ambiguity with `ask_parent` until explicitly answered via `reply_question`, backed by idempotent `requestId` / `messageId` receipts.
 - **Real-Time Three-Pane Web Console (`127.0.0.1:3141`)**: Groups children by parent host session, streams live token-by-token reasoning and collapsible tool traces (`live.json` + SSE), visualizes 1M context window composition and `tok/s` throughput, renders read-only inline Git worktree diffs, and syncs session titles, notes, pins, and archives live with `organize_agents`.
 - **Model Capability Profiles & Secret-Safe Settings Center**: Manage provider enablement, masked API keys, 1-click local Codex OAuth sync, 1M context window overrides, recommended thinking levels, and model capability descriptions from the UI (`0600` atomic backups before touching `~/.pi/agent/auth.json` or `models.json`).
-- **Kernel-Enforced macOS Seatbelt Sandboxing**: Restricts file writes to declared `ownedPaths` or isolated Git `worktree` branches while blocking access to `~/.pi`, `~/.codex`, `~/.ssh`, `~/.config/opencode`, `~/.local/share/opencode`, and controller state directories in `strict` and `dev` modes.
+- **Kernel-Enforced Cross-Platform Sandboxing (macOS Seatbelt / Linux & WSL2 `bubblewrap`)**: Restricts file writes to declared `ownedPaths` or isolated Git `worktree` branches while blocking access to `~/.pi`, `~/.codex`, `~/.ssh`, `~/.config/opencode`, `~/.local/share/opencode`, and controller state directories in `strict` and `dev` modes.
 - **Read-Only Multi-Provider Quota Inspector**: Built-in `get_quota` queries plan windows and balances directly using local Pi credentials across Codex, Zhipu GLM / Z.ai, MiniMax Token Plan, DeepSeek, and OpenCode Go without mutating auth files or exposing account identities.
 
 ## Architecture
@@ -42,6 +42,7 @@ flowchart LR
     AGY["Google Antigravity\n(MCP + Hooks + Watcher)"]
     CC["Claude Code\n(MCP + Channel / Watcher)"]
     CDX["OpenAI Codex\n(MCP + Thread Queue)"]
+    OC["OpenCode\n(MCP + Skill + Watcher/CLI)"]
   end
 
   subgraph Bridge["MCP Bridge & Wake-Up Layer"]
@@ -54,7 +55,7 @@ flowchart LR
     WEB["Pi Console (Port 3141)\n(SSE Push / Masked Settings Center)"]
   end
 
-  subgraph Workers["Sandboxed Execution (macOS Seatbelt)"]
+  subgraph Workers["Sandboxed Execution (Seatbelt / Bubblewrap)"]
     PI1["Pi Subagent A\n(Isolated Git Worktree)"]
     PI2["Pi Subagent B\n(Scoped ownedPaths)"]
   end
@@ -62,10 +63,12 @@ flowchart LR
   AGY <--> SRV
   CC <--> SRV
   CDX <--> SRV
+  OC <--> SRV
   SRV <--> CTRL
   CB <--> AGY
   CB <--> CC
   CB <--> CDX
+  CB <--> OC
   CTRL --> CB
   CTRL <--> PI1
   CTRL <--> PI2
@@ -107,10 +110,10 @@ Configure providers, sync local Codex OAuth tokens, adjust context windows, and 
 ### Installation
 
 ```bash
-git clone https://github.com/mumuxsy/pi-subagents.git
-cd pi-subagents
+git clone https://github.com/paintstar/PI-Server.git
+cd PI-Server
 
-# 1. Install locked dependencies and run offline syntax + 96 sandbox/protocol tests
+# 1. Install locked dependencies and run offline syntax + 100 sandbox/protocol tests
 npm ci --ignore-scripts
 npm run check
 npm test
@@ -167,7 +170,7 @@ npm run dashboard
 ## Documentation & Governance
 
 - [Reliable Communication, Sandbox & Protocol Spec (中文)](docs/communication.md)
-- [Verification Matrix & 89-Test Suite Summary (中文)](docs/verification.md)
+- [Verification Matrix & 100-Test Suite Summary (中文)](docs/verification.md)
 - [Contributing Guide](CONTRIBUTING.md) · [Security Policy](SECURITY.md) · [Changelog](CHANGELOG.md)
 
 ## License

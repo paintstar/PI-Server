@@ -4,7 +4,7 @@
   <p><strong>面向 Google Antigravity、Claude Code、OpenAI Codex 与 OpenCode 的多模型子代理 MCP 调度平台与实时控制台</strong></p>
 
   <p>
-    <a href="https://github.com/mumuxsy/pi-subagents/actions/workflows/ci.yml"><img src="https://github.com/mumuxsy/pi-subagents/actions/workflows/ci.yml/badge.svg" alt="CI Status" /></a>
+    <a href="https://github.com/paintstar/PI-Server/actions/workflows/ci.yml"><img src="https://github.com/paintstar/PI-Server/actions/workflows/ci.yml/badge.svg" alt="CI Status" /></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License" /></a>
     <img src="https://img.shields.io/badge/Node.js-%3E%3D22.19-339933?logo=nodedotjs&logoColor=white" alt="Node >= 22.19" />
     <img src="https://img.shields.io/badge/MCP_SDK-1.26.0_(24_Tools)-e27448" alt="MCP SDK 1.26.0" />
@@ -55,7 +55,7 @@ flowchart LR
     WEB["Pi 调度台 (Port 3141)\n(SSE 实时推送 / 脱敏设置中心)"]
   end
 
-  subgraph Workers["受限执行层 (macOS Seatbelt)"]
+  subgraph Workers["受限执行层 (Seatbelt / Bubblewrap)"]
     PI1["Pi 子代理 A\n(独立 Git Worktree)"]
     PI2["Pi 子代理 B\n(限定 ownedPaths)"]
   end
@@ -112,8 +112,8 @@ flowchart LR
 ### 安装与接入
 
 ```bash
-git clone https://github.com/mumuxsy/pi-subagents.git
-cd pi-subagents
+git clone https://github.com/paintstar/PI-Server.git
+cd PI-Server
 
 # 1. 安装固定依赖并运行语法与全量沙箱测试（离线执行，不消耗模型额度）
 npm ci --ignore-scripts
@@ -190,7 +190,7 @@ MCP 协议本身不保证在主代理结束一轮回复后重新唤醒模型，�
 | `get_model_profiles` | 是 | 一次获取已启用模型的上下文窗口、推荐思考强度、中文能力与差异描述、脱敏服务商就绪状态、6 个内置子代理工具清单与默认沙箱策略 |
 | `list_models` | 是 | 列出本机 Pi 可用模型目录（默认过滤已在设置中心停用的模型，传 `includeDisabled: true` 可查看全部） |
 | `get_quota` | 是 | 使用本机 Pi 凭据只读查询 Codex、智谱 GLM / Z.ai、MiniMax Token Plan、DeepSeek 与 OpenCode Go 套餐窗口或余额 |
-| `get_subagent_health` | 是 | 检查 Pi 可执行文件、后台控制进程、macOS `sandbox-exec`、可用模型数、面板地址及插件钩子健康状态 |
+| `get_subagent_health` | 是 | 检查 Pi 可执行文件、后台控制进程、沙箱后端（macOS `sandbox-exec` / Linux & WSL2 `bwrap`）、可用模型数、面板地址及宿主插件/Skill 健康状态 |
 
 ### 可靠通信、回调与审查（6 个）
 
@@ -249,11 +249,12 @@ MCP 协议本身不保证在主代理结束一轮回复后重新唤醒模型，�
 ## 深入文档与治理
 
 - [可靠通信、权限沙箱与协议规范](docs/communication.md)
-- [验证矩阵与 89 项回归记录](docs/verification.md)
+- [验证矩阵与 100 项回归记录](docs/verification.md)
 - [代码结构与维护约定](AGENTS.md)
 - [参与贡献指南](CONTRIBUTING.md) · [安全漏洞私密上报](SECURITY.md) · [版本更新记录](CHANGELOG.md)
 
 ## 致谢与开源协议
 
+- 本仓库基于 [mumuxsy/pi-subagents](https://github.com/mumuxsy/pi-subagents) 演进，新增 OpenCode 第四端适配与 Linux / Windows WSL2 `bubblewrap` 沙箱后端。
 - 套餐额度只读查询接口格式参考了 [CodexBar](https://github.com/steipete/CodexBar) 的公开协议说明与各模型服务商官方文档，由本项目使用 Node.js 独立实现。
 - 本项目基于 [MIT License](LICENSE) 开源发布。

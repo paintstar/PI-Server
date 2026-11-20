@@ -159,7 +159,7 @@ function writeAntigravityPlugin(env) {
     description: 'Multi-model Pi subagent orchestration for Antigravity with session binding, reactive wait-events watcher, and PreInvocation/Stop hooks.',
     logo: 'assets/logo.svg',
     author: { name: 'mumuxsy' },
-    repository: 'https://github.com/mumuxsy/pi-subagents',
+    repository: 'https://github.com/paintstar/PI-Server',
     suggestedPrompts: [
       'List authenticated Pi models and check subagent runtime health',
       'Delegate parallel codebase review subagents using Pi models for this session',

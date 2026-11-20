@@ -5,13 +5,13 @@
   "type": "module",
   "description": "面向 Antigravity、Claude Code、Codex 与 OpenCode 的 Pi 多模型子代理调度平台（MCP 服务与实时 Web 调度台）",
   "author": "mumuxsy",
-  "homepage": "https://github.com/mumuxsy/pi-subagents#readme",
+  "homepage": "https://github.com/paintstar/PI-Server#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mumuxsy/pi-subagents.git"
+    "url": "git+https://github.com/paintstar/PI-Server.git"
   },
   "bugs": {
-    "url": "https://github.com/mumuxsy/pi-subagents/issues"
+    "url": "https://github.com/paintstar/PI-Server/issues"
   },
   "keywords": [
     "mcp",
