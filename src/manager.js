@@ -117,7 +117,7 @@ export class Manager extends EventEmitter {
     record.owner = this.owner; record.ownerPid = process.pid;
     return lock;
   }
-  async spawn({ cwd, prompt, provider, model, name, ownedPaths, workspaceMode = 'auto', baseRef, thinking, context = '', parentId, parentInfo, parentSession, antigravitySessionId, policy }) {
+  async spawn({ cwd, prompt, provider, model, name, ownedPaths, workspaceMode = 'auto', baseRef, thinking, context = '', parentId, parentInfo, parentSession, antigravitySessionId, opencodeSessionId, policy }) {
     if (!path.isAbsolute(cwd)) throw new Error('cwd must be an absolute directory path');
     this.capacity(); await this.validateModel({ provider, model }); this.capacity();
     const paths = validateOwnedPaths(ownedPaths);
@@ -139,7 +139,11 @@ export class Manager extends EventEmitter {
       ...(policy?.allowNetwork === undefined ? { allowNetwork: settingsDefaults.allowNetwork } : {}),
       ...(policy?.sandboxMode === undefined && settingsDefaults.sandboxMode ? { sandboxMode: settingsDefaults.sandboxMode } : {}),
     };
-    const explicitParent = antigravitySessionId ? { kind: 'antigravity', sessionId: antigravitySessionId, cwd: original } : parentSession ? { ...parentSession, cwd: parentSession.cwd || original } : null;
+    const explicitParent = antigravitySessionId
+      ? { kind: 'antigravity', sessionId: antigravitySessionId, cwd: original }
+      : opencodeSessionId
+        ? { kind: 'opencode', sessionId: opencodeSessionId, cwd: original }
+        : parentSession ? { ...parentSession, cwd: parentSession.cwd || original } : null;
     const resolvedParentInfo = normalizeParentInfo(explicitParent, parentInfo);
     const cleanBenchmark = isCleanBenchmarkProfile(context);
     const record = { id, parentId, parentInfo: resolvedParentInfo, policy: agentPolicy(effectivePolicy, { provider, model }), modelRequests: 0, name: name || id.slice(0, 8), model: { provider, model }, thinking: effectiveThinking, loadSkills: cleanBenchmark ? false : settingsDefaults.loadSkills, loadContextFiles: cleanBenchmark ? false : settingsDefaults.loadContextFiles, ownedPaths: paths, context,
@@ -335,7 +339,9 @@ export class Manager extends EventEmitter {
     record.sequence = Math.max(record.sequence, this.storage.events(id).at(-1)?.sequence || 0);
     const explicitParent = options?.antigravitySessionId
       ? { kind: 'antigravity', sessionId: options.antigravitySessionId, cwd: record.workspace?.sourceCwd || record.workspace?.cwd }
-      : options?.parentSession || null;
+      : options?.opencodeSessionId
+        ? { kind: 'opencode', sessionId: options.opencodeSessionId, cwd: record.workspace?.sourceCwd || record.workspace?.cwd }
+        : options?.parentSession || null;
     if (explicitParent) record.parentInfo = normalizeParentInfo(explicitParent, record.parentInfo);
     for (const question of this.messages.all(id).filter(value => value.direction === 'question' && value.state === 'stored')) this.messages.update(id, question.messageId, { state: 'cancelled' });
     if (!record.sessionFile || !fs.existsSync(record.sessionFile)) throw new Error('No saved Pi session is available');

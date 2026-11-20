@@ -1,7 +1,7 @@
 <div align="center">
   <img src="docs/assets/logo.svg" width="88" height="88" alt="Pi Subagents Logo" />
   <h1>Pi Subagents</h1>
-  <p><strong>Multi-Model Subagent Orchestration MCP & Real-Time Local Console for Antigravity, Claude Code, and Codex</strong></p>
+  <p><strong>Multi-Model Subagent Orchestration MCP & Real-Time Local Console for Antigravity, Claude Code, Codex, and OpenCode</strong></p>
 
   <p>
     <a href="https://github.com/mumuxsy/pi-subagents/actions/workflows/ci.yml"><img src="https://github.com/mumuxsy/pi-subagents/actions/workflows/ci.yml/badge.svg" alt="CI Status" /></a>
@@ -26,12 +26,12 @@
 
 ## Key Highlights
 
-- **Host-Agnostic Across Three Major AI IDEs/CLIs**: First-class installer and wake-up integration for **Google Antigravity** (bundled plugin, rules, skill, and `PreInvocation` / `Stop` hooks), **Claude Code** (`claude/channel` notifications and background event watcher), and **OpenAI Codex** (`codex queue` thread delivery).
+- **Host-Agnostic Across Four Major AI IDEs/CLIs**: First-class installer and wake-up integration for **Google Antigravity** (bundled plugin, rules, skill, and `PreInvocation` / `Stop` hooks), **Claude Code** (`claude/channel` notifications and background event watcher), **OpenAI Codex** (`codex queue` thread delivery), and **OpenCode** (`opencode.jsonc` `mcp.servers` registration, bundled `SKILL.md`, session binding, background watcher, and opt-in CLI session wake-ups).
 - **Detached Unix-Socket Controller**: Subagent processes and pending questions live inside an independent background daemon (`src/controller.js`). Closing or restarting your host chat never kills running Pi workers—reconnect anytime with `resume_agent`.
 - **Durable Two-Way Messaging & Blocking `ask_parent`**: Subagents report milestones via `agent_message`, coordinate with sibling workers, or pause on ambiguity with `ask_parent` until explicitly answered via `reply_question`, backed by idempotent `requestId` / `messageId` receipts.
 - **Real-Time Three-Pane Web Console (`127.0.0.1:3141`)**: Groups children by parent host session, streams live token-by-token reasoning and collapsible tool traces (`live.json` + SSE), visualizes 1M context window composition and `tok/s` throughput, renders read-only inline Git worktree diffs, and syncs session titles, notes, pins, and archives live with `organize_agents`.
 - **Model Capability Profiles & Secret-Safe Settings Center**: Manage provider enablement, masked API keys, 1-click local Codex OAuth sync, 1M context window overrides, recommended thinking levels, and model capability descriptions from the UI (`0600` atomic backups before touching `~/.pi/agent/auth.json` or `models.json`).
-- **Kernel-Enforced macOS Seatbelt Sandboxing**: Restricts file writes to declared `ownedPaths` or isolated Git `worktree` branches while blocking access to `~/.pi`, `~/.codex`, `~/.ssh`, and controller state directories in `strict` and `dev` modes.
+- **Kernel-Enforced macOS Seatbelt Sandboxing**: Restricts file writes to declared `ownedPaths` or isolated Git `worktree` branches while blocking access to `~/.pi`, `~/.codex`, `~/.ssh`, `~/.config/opencode`, `~/.local/share/opencode`, and controller state directories in `strict` and `dev` modes.
 - **Read-Only Multi-Provider Quota Inspector**: Built-in `get_quota` queries plan windows and balances directly using local Pi credentials across Codex, Zhipu GLM / Z.ai, MiniMax Token Plan, DeepSeek, and OpenCode Go without mutating auth files or exposing account identities.
 
 ## Architecture
@@ -102,7 +102,7 @@ Configure providers, sync local Codex OAuth tokens, adjust context windows, and 
 - **OS**: macOS (tool sandboxing relies on `/usr/bin/sandbox-exec`)
 - **Node.js**: `>= 22.19.0`
 - **Pi CLI**: `>= 1.0.2` (installed on `PATH` with at least one authenticated model provider)
-- **Host Client**: Google Antigravity, Claude Code, or OpenAI Codex
+- **Host Client**: Google Antigravity, Claude Code, OpenAI Codex, or OpenCode
 
 ### Installation
 
@@ -110,12 +110,12 @@ Configure providers, sync local Codex OAuth tokens, adjust context windows, and 
 git clone https://github.com/mumuxsy/pi-subagents.git
 cd pi-subagents
 
-# 1. Install locked dependencies and run offline syntax + 89 sandbox/protocol tests
+# 1. Install locked dependencies and run offline syntax + 96 sandbox/protocol tests
 npm ci --ignore-scripts
 npm run check
 npm test
 
-# 2. Register pi-subagents across installed Antigravity, Claude Code, and Codex clients
+# 2. Register pi-subagents across installed Antigravity, Claude Code, Codex, and OpenCode clients
 npm run install:all
 ```
 
@@ -125,10 +125,12 @@ Target individual hosts or remove integrations cleanly at any time (existing cli
 npm run install:antigravity   # Builds & validates ~/.gemini/config/plugins/pi-subagents (--strict)
 npm run install:claude        # Registers user-scope stdio MCP in ~/.claude.json
 npm run install:codex         # Registers global MCP server in ~/.codex/config.toml
+npm run install:opencode      # Registers local MCP in ~/.config/opencode/opencode.jsonc & installs SKILL.md
 
 npm run uninstall:antigravity
 npm run uninstall:claude
 npm run uninstall:codex
+npm run uninstall:opencode
 ```
 
 Launch or attach to the local web console manually anytime:
@@ -145,6 +147,7 @@ npm run dashboard
 | **Google Antigravity** | Pass `antigravitySessionId` on `spawn_agent` or call `bind_session` | Bundled `PreInvocation` and `Stop` hooks inject undelivered events and guard against premature turn exit; pair with `mustWait.antigravityBackgroundCommand` (`node scripts/wait-events.js --session <id>`) for instant reactive wakeups, deduplicated via `antigravityDeliveredSeq`. |
 | **Claude Code** | Auto-detected via `CLAUDE_CODE_SESSION_ID` | Emits `notifications/claude/channel` when started with `--dangerously-load-development-channels server:pi-subagents`, or wakes any session via background `npm run wait-events -- --agent <id>`. |
 | **OpenAI Codex** | Pass `callback.codexThreadId` from `echo $CODEX_THREAD_ID` | Enqueues settle, question, failure, and limit events directly into the parent thread via `codex queue --thread <id>`. |
+| **OpenCode** | Pass `opencodeSessionId` (or `parentSession: { kind: "opencode", sessionId }`), or call `bind_session(kind="opencode")` | Detects the `opencode` MCP client automatically, installs `~/.config/opencode/skills/pi-subagents/SKILL.md`, and supports `wait-events.js --session <id>` plus opt-in `opencodeCliWake` (`opencode run --session <id>`), deduplicated via the shared monotonic cursor. |
 
 ## MCP Tool Reference (24 Tools)
 

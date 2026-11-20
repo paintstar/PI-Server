@@ -12,7 +12,7 @@ const script = fileURLToPath(new URL('./controller.js', import.meta.url));
 export function normalizeParentInfo(input, fallback) {
   const source = input && typeof input === 'object' ? input : {};
   const result = {};
-  if (typeof source.kind === 'string' && ['antigravity', 'codex', 'claude', 'mcp', 'other', 'unknown'].includes(source.kind)) result.kind = source.kind;
+  if (typeof source.kind === 'string' && ['antigravity', 'codex', 'claude', 'opencode', 'mcp', 'other', 'unknown'].includes(source.kind)) result.kind = source.kind;
   else if (fallback?.kind) result.kind = fallback.kind;
   for (const key of ['sessionId', 'hostSessionId', 'projectId']) {
     const val = typeof source[key] === 'string' && source[key].trim() && source[key].length <= 500 ? source[key].trim() : fallback?.[key];
@@ -23,15 +23,25 @@ export function normalizeParentInfo(input, fallback) {
   return Object.keys(result).length ? result : undefined;
 }
 export function parentIdentity(env = process.env, clientName = '') {
-  const kind = env.CODEX_THREAD_ID ? 'codex'
-    : (env.ANTIGRAVITY_CONVERSATION_ID || env.ANTIGRAVITY_AGENT || env.ANTIGRAVITY_PROJECT_ID || /antigravity|agy/i.test(clientName)) ? 'antigravity'
-      : env.CLAUDE_CODE_SESSION_ID || /claude/i.test(clientName) ? 'claude'
-        : /codex/i.test(clientName) ? 'codex' : 'unknown';
+  const fromClient = /opencode/i.test(clientName) ? 'opencode'
+    : /codex/i.test(clientName) ? 'codex'
+      : /claude/i.test(clientName) ? 'claude'
+        : /antigravity|agy/i.test(clientName) ? 'antigravity' : '';
+  const fromHint = ['antigravity', 'codex', 'claude', 'opencode'].includes(env.PI_SUBAGENTS_HOST) ? env.PI_SUBAGENTS_HOST : '';
+  const kind = fromClient || fromHint
+    || (env.CODEX_THREAD_ID ? 'codex'
+      : (env.ANTIGRAVITY_CONVERSATION_ID || env.ANTIGRAVITY_AGENT || env.ANTIGRAVITY_PROJECT_ID) ? 'antigravity'
+        : env.CLAUDE_CODE_SESSION_ID ? 'claude'
+          : (env.OPENCODE_SESSION_ID || env.OPENCODE) ? 'opencode' : 'unknown');
+  const sessionId = kind === 'opencode' ? env.OPENCODE_SESSION_ID
+    : kind === 'codex' ? env.CODEX_THREAD_ID
+      : kind === 'claude' ? env.CLAUDE_CODE_SESSION_ID
+        : kind === 'antigravity' ? env.ANTIGRAVITY_CONVERSATION_ID : undefined;
   return normalizeParentInfo({
     kind,
-    sessionId: env.ANTIGRAVITY_CONVERSATION_ID || env.CODEX_THREAD_ID || env.CLAUDE_CODE_SESSION_ID,
-    hostSessionId: env.ANTIGRAVITY_TRAJECTORY_ID || env.CLAUDE_CODE_HOST_SESSION_ID,
-    projectId: env.ANTIGRAVITY_PROJECT_ID,
+    sessionId,
+    hostSessionId: kind === 'antigravity' ? env.ANTIGRAVITY_TRAJECTORY_ID : kind === 'claude' ? env.CLAUDE_CODE_HOST_SESSION_ID : undefined,
+    projectId: kind === 'antigravity' ? env.ANTIGRAVITY_PROJECT_ID : undefined,
     cwd: process.cwd(),
   });
 }

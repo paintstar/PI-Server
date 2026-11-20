@@ -25,6 +25,7 @@ export function installCommunication(server, manager, register) {
     server: { durableMessages: true, independentController: Boolean(manager.call), resourceSubscriptions: true, logNotifications: true, progressNotifications: true, tasks: 'experimental MCP 2025-11-25' },
     callbacks: {
       antigravity: 'Pass antigravitySessionId (Conversation ID) on spawn_agent/resume_agent or call bind_session. Supports PreInvocation/Stop hooks, reactive background watcher (scripts/wait-events.js --session <id>), and opt-in agy CLI resume.',
+      opencode: 'Pass opencodeSessionId (or parentSession={kind:"opencode", sessionId}) on spawn_agent/resume_agent or call bind_session. Supports reactive background watcher (scripts/wait-events.js --session <id>) and opt-in detached opencode CLI wake (callback.opencodeCliWake=true).',
       claudeChannel: 'notifications/claude/channel; wakes Claude Code only when the session enabled this server as a channel. Otherwise run scripts/wait-events.js as a background command.',
       codexQueue: 'codex queue --thread <CODEX_THREAD_ID>; set callback.codexThreadId on spawn_agent or set_agent_callback.',
     },

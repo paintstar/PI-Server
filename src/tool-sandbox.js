@@ -18,7 +18,7 @@ export function sandboxMode(policy = {}) {
   if (policy.sandboxMode) return modes.has(policy.sandboxMode) ? policy.sandboxMode : 'strict';
   try { const mode = JSON.parse(fs.readFileSync(configFile, 'utf8')).mode; return modes.has(mode) ? mode : 'strict'; } catch { return 'strict'; }
 }
-const privateHome = () => ['.pi', '.codex', '.ssh'].map(value => canonicalPath(path.join(os.homedir(), value)));
+const privateHome = () => ['.pi', '.codex', '.ssh', '.config/opencode', '.local/share/opencode'].map(value => canonicalPath(path.join(os.homedir(), value)));
 function gitCommonDir(cwd) {
   try {
     const marker = path.join(cwd, '.git');

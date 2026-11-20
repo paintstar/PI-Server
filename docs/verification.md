@@ -7,20 +7,22 @@
 日常开发与 CI 默认只运行离线测试套件，不消耗任何模型额度，也不触碰真实用户数据：
 
 ```bash
-npm run check                # 检查全部 JS / TS 源码语法
-npm test                     # 运行全部 89 项隔离单元、协议、沙箱与面板测试
-npm run verify:communication # 使用本机配置的模型实测断线重连、阻塞提问与请求上限拦截
-npm run verify:live          # 实测多模型并行修改、兄弟通信与临时模型升降级
-node scripts/verify-codex.js # 实测真实 Codex CLI 通过 stdio MCP 调度子代理
+npm run check                   # 检查全部 JS / TS 源码语法
+npm test                        # 运行全部 96 项隔离单元、协议、沙箱与面板测试
+npm run verify:communication    # 使用本机配置的模型实测断线重连、阻塞提问与请求上限拦截
+npm run verify:live             # 实测多模型并行修改、兄弟通信与临时模型升降级
+node scripts/verify-codex.js    # 实测真实 Codex CLI 通过 stdio MCP 调度子代理
+node scripts/verify-opencode.js # 实测真实 OpenCode CLI 通过 stdio MCP 调度子代理
 ```
 
 真机脚本均在系统临时目录中构造隔离演示包执行；运行生成的本地记录保存在 `.agents/records/`（已被 `.gitignore` 排除），包含当次提示词与模型输出，仅留本机核验使用。
 
-## 自动化测试覆盖模块（89 项）
+## 自动化测试覆盖模块（96 项）
 
 | 测试文件 | 验证重点 |
 | --- | --- |
 | `tests/antigravity.test.js` | Antigravity 会话身份识别、`bind_session`、`wait-events --session` 心跳与唤醒、`PreInvocation`/`Stop` 钩子幂等注入与拦截、严格插件包构建校验、超过 100 条事件的游标排干去重 |
+| `tests/opencode.test.js` | OpenCode 宿主识别、`opencodeSessionId` 与 `bind_session` 会话绑定、`wait-events --session` 与 `DashboardData` 统一游标联动、可选 `opencodeCliWake` 去重唤醒、JSONC 保留注释安装/卸载与 `0600` 备份、Seatbelt 沙箱拦截 `~/.config/opencode` 与 `~/.local/share/opencode` |
 | `tests/callbacks.test.js` | Claude Code channel 通知、Codex 线程队列投递与历史不重放、`get_agent_changes` Git 工作树差异计算、单代理 `wait-events` 唤醒 |
 | `tests/communication.test.js` | `ask_parent` 阻塞提问与显式答复、取消等待、伪造令牌拦截、兄弟代理互发指令、分页读取不丢事件 |
 | `tests/controller.test.js` | 独立 Unix Socket 控制进程在桥接断开后保活子代理与提问、多父会话隔离、新建代理即时唤醒长轮询 |

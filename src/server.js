@@ -21,21 +21,22 @@ import { DashboardData } from './dashboard-data.js';
 import { dashboardInfo, ensureDashboard } from './dashboard-launcher.js';
 import { spawnReminder, waitReminder, waitCommandFor, sessionIdPattern } from './wait-reminder.js';
 import { buildSettingsPayload, enrichModels, filterModelProfiles } from './model-settings.js';
+import { inspectOpencodeConfig } from './opencode-config.js';
 
 const execFileAsync = promisify(execFile);
 const projectRoot = fileURLToPath(new URL('..', import.meta.url));
 const packageVersion = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8')).version;
-export const instructions = `HARD RULE: after spawn_agent or send_message starts work, you must not end your turn while any child is still starting/running/finishing/waiting. Keep calling wait_agent (passing each nextSequence in after[agentId]) until every child is completed, failed, interrupted or closed. If you truly must stop earlier, tell the user plainly that the children are still running in the background. Forgetting to wait is the most common failure: the host cannot wake you after your turn ends. spawn_agent and wait_agent results carry a reminder field; follow it. Claude Code parents should also run the wait-events command given in the spawn result as a background command so events wake them. Antigravity parents should pass their Conversation ID as antigravitySessionId on spawn_agent/resume_agent (or call bind_session), then wait synchronously with wait_agent or asynchronously via run_command (WaitMsBeforeAsync=500, IsDaemon=false) running the mustWait.antigravityBackgroundCommand (scripts/wait-events.js --session <Conversation ID>); installed Antigravity hooks also inject pending events on PreInvocation and prevent premature Stop while a child lacks an active watcher.
-Pi external subagents supplement the host agent's capabilities, enabling large-scale parallel work with configured models. Use this capability only when the human user has explicitly authorized external model delegation in the conversation. A generic coding request or available quota is not authorization. Respect the authorized task, providers/models, concurrency and spending limits; continue within existing authorization without repeatedly asking. Ask the user before expanding beyond it, including additional paid usage. Read-only inspection does not require delegation authorization. Use get_client_capabilities and get_subagent_health to inspect capabilities and health. Use get_model_profiles or list_models to check context windows, model capability descriptions and Pi tool defaults, then spawn_agent with an explicit provider/model, absolute cwd, ownedPaths and concrete acceptance criteria. Spawn returns immediately; accepted does not mean completed. While children run, use wait_agent with each returned nextSequence as after[agentId], read_agent for details and reply_question for blocking questions. Send messages via send_message; steer is delivered at a Pi turn boundary. Waits return events, including progress; inspect status and keep waiting until completed, failed, interrupted or closed. Change models only when idle, or interrupt first; next_run restores the previous model after a settled run. Claims of success need actual changes/checks, not model prose. Standard resource, logging and task notifications are available, but host UI support does not guarantee model-turn wake after a parent turn ended. Keep coordinating until the assigned tasks finish. spawn_agent enables wake-up callbacks by default: Antigravity gets hook/watcher session callbacks and optional agy CLI resume; Claude Code gets channel notifications when this server is enabled as a channel; Codex parents should pass callback.codexThreadId from the shell command "echo $CODEX_THREAD_ID" so settled/question events are queued into their thread. Callbacks are hints, never acceptance. Use get_agent_changes to review actual files. Git worktrees preserve only the explicit committed baseRef; review/merge changes separately. New agents use OS-restricted tool processes. Declare ownedPaths; omit policy maxModelRequests/maxTotalTokens/maxRuntimeMs unless the human user explicitly requested a hard cap (defaults already allow 100000 requests, 1e12 non-cached tokens, and 7 days runtime). Non-cached tokens (input, output, cacheWrite) are observed before each request, so an in-flight request can exceed the threshold; these limits do not guarantee an exact currency charge. Supply stable requestId/messageId on retries; uncertain delivery must be inspected, not replayed. Credentials remain in Pi; get_quota reads Pi credentials only to perform account-scoped read-only quota queries. Quota is not spending authorization. Do not send provider secrets in tools. Never auto-deploy or send external messages. The independent controller keeps agents/questions alive after MCP disconnects. Use resume_agent or resume_task to attach to their saved identities after reconnecting; do not rerun completed work blindly.`;
+export const instructions = `HARD RULE: after spawn_agent or send_message starts work, you must not end your turn while any child is still starting/running/finishing/waiting. Keep calling wait_agent (passing each nextSequence in after[agentId]) until every child is completed, failed, interrupted or closed. If you truly must stop earlier, tell the user plainly that the children are still running in the background. Forgetting to wait is the most common failure: the host cannot wake you after your turn ends. spawn_agent and wait_agent results carry a reminder field; follow it. Claude Code parents should also run the wait-events command given in the spawn result as a background command so events wake them. Antigravity parents should pass their Conversation ID as antigravitySessionId on spawn_agent/resume_agent (or call bind_session), then wait synchronously with wait_agent or asynchronously via run_command (WaitMsBeforeAsync=500, IsDaemon=false) running the mustWait.antigravityBackgroundCommand (scripts/wait-events.js --session <Conversation ID>); installed Antigravity hooks also inject pending events on PreInvocation and prevent premature Stop while a child lacks an active watcher. OpenCode parents should pass their session ID as opencodeSessionId (or parentSession={kind:"opencode", sessionId} / bind_session(kind="opencode")), wait with wait_agent or scripts/wait-events.js --session <sessionId>, and may opt in to callback.opencodeCliWake=true for CLI session wake-ups.
+Pi external subagents supplement the host agent's capabilities, enabling large-scale parallel work with configured models. Use this capability only when the human user has explicitly authorized external model delegation in the conversation. A generic coding request or available quota is not authorization. Respect the authorized task, providers/models, concurrency and spending limits; continue within existing authorization without repeatedly asking. Ask the user before expanding beyond it, including additional paid usage. Read-only inspection does not require delegation authorization. Use get_client_capabilities and get_subagent_health to inspect capabilities and health. Use get_model_profiles or list_models to check context windows, model capability descriptions and Pi tool defaults, then spawn_agent with an explicit provider/model, absolute cwd, ownedPaths and concrete acceptance criteria. Spawn returns immediately; accepted does not mean completed. While children run, use wait_agent with each returned nextSequence as after[agentId], read_agent for details and reply_question for blocking questions. Send messages via send_message; steer is delivered at a Pi turn boundary. Waits return events, including progress; inspect status and keep waiting until completed, failed, interrupted or closed. Change models only when idle, or interrupt first; next_run restores the previous model after a settled run. Claims of success need actual changes/checks, not model prose. Standard resource, logging and task notifications are available, but host UI support does not guarantee model-turn wake after a parent turn ended. Keep coordinating until the assigned tasks finish. spawn_agent enables wake-up callbacks by default: Antigravity gets hook/watcher session callbacks and optional agy CLI resume; OpenCode gets session watcher callbacks and optional opencode CLI wake; Claude Code gets channel notifications when this server is enabled as a channel; Codex parents should pass callback.codexThreadId from the shell command "echo $CODEX_THREAD_ID" so settled/question events are queued into their thread. Callbacks are hints, never acceptance. Use get_agent_changes to review actual files. Git worktrees preserve only the explicit committed baseRef; review/merge changes separately. New agents use OS-restricted tool processes. Declare ownedPaths; omit policy maxModelRequests/maxTotalTokens/maxRuntimeMs unless the human user explicitly requested a hard cap (defaults already allow 100000 requests, 1e12 non-cached tokens, and 7 days runtime). Non-cached tokens (input, output, cacheWrite) are observed before each request, so an in-flight request can exceed the threshold; these limits do not guarantee an exact currency charge. Supply stable requestId/messageId on retries; uncertain delivery must be inspected, not replayed. Credentials remain in Pi; get_quota reads Pi credentials only to perform account-scoped read-only quota queries. Quota is not spending authorization. Do not send provider secrets in tools. Never auto-deploy or send external messages. The independent controller keeps agents/questions alive after MCP disconnects. Use resume_agent or resume_task to attach to their saved identities after reconnecting; do not rerun completed work blindly.`;
 
 const id = z.string().uuid();
 const text = z.string().min(1).max(24000);
-const safeSessionId = z.string().trim().min(1).max(200).regex(sessionIdPattern);
+const safeSessionId = () => z.string().trim().min(1).max(200).regex(sessionIdPattern);
 const policyShape = z.object({ allowedModels: z.array(z.object({ provider: z.string().min(1), model: z.string().min(1) })).min(1).max(50).optional(), maxModelRequests: z.number().int().min(1).max(1000000).optional(), maxTotalTokens: z.number().int().min(1).max(1e12).optional(), maxRuntimeMs: z.number().int().min(1000).max(2147483647).optional(), maxOutputTokens: z.number().int().min(1).max(1000000).optional(), allowNetwork: z.boolean().optional(), sandboxMode: z.enum(['strict', 'dev', 'bypass']).optional() }).describe('Optional runtime overrides. Omit maxModelRequests, maxTotalTokens and maxRuntimeMs unless the human user explicitly requested a hard cap.');
 const thinkingShape = z.enum(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
-const parentSessionShape = z.object({
-  kind: z.enum(['antigravity', 'codex', 'claude', 'mcp']).optional(),
-  sessionId: safeSessionId,
+const parentSessionShape = () => z.object({
+  kind: z.enum(['antigravity', 'codex', 'claude', 'opencode', 'mcp']).optional(),
+  sessionId: safeSessionId(),
   hostSessionId: z.string().trim().min(1).max(200).optional(),
   cwd: z.string().min(1).max(2000).optional(),
 });
@@ -43,7 +44,7 @@ const spawnShape = {
   requestId: id.optional(), policy: policyShape.optional(), cwd: z.string().min(1), prompt: text, provider: z.string().min(1), model: z.string().min(1), name: z.string().max(100).optional(),
   ownedPaths: z.array(z.string().min(1)).min(1).max(100), context: z.string().max(40000).default(''),
   workspaceMode: z.enum(['auto', 'worktree', 'shared']).default('auto'), baseRef: z.string().optional(), thinking: thinkingShape.optional(),
-  antigravitySessionId: safeSessionId.optional(), parentSession: parentSessionShape.optional(),
+  antigravitySessionId: safeSessionId().optional(), opencodeSessionId: safeSessionId().optional(), parentSession: parentSessionShape().optional(),
 };
 
 async function collectHealth(manager, callbacks, managerOptions) {
@@ -65,6 +66,7 @@ async function collectHealth(manager, callbacks, managerOptions) {
   try { modelsCount = (await manager.models()).length; }
   catch (error) { modelsError = error.message; }
   const pluginDir = path.join(process.env.PI_ANTIGRAVITY_PLUGINS_DIR || path.join(os.homedir(), '.gemini/config/plugins'), 'pi-subagents');
+  const opencode = inspectOpencodeConfig();
   return {
     ok: Boolean(pi.ok && controller.ok),
     host: callbacks.host(),
@@ -76,6 +78,8 @@ async function collectHealth(manager, callbacks, managerOptions) {
     dashboardUrl: dashboardInfo(manager.storage.root)?.url || null,
     antigravityPluginInstalled: fs.existsSync(path.join(pluginDir, 'plugin.json')),
     antigravityHooksConfigured: fs.existsSync(path.join(pluginDir, 'hooks.json')),
+    opencodeMcpConfigured: opencode.mcpConfigured,
+    opencodeSkillInstalled: opencode.skillInstalled,
   };
 }
 
@@ -128,10 +132,11 @@ function registerOrganizeTool({ register, manager, callbacksRef }) {
   }, async ({ agentIds, ...patch }) => {
     const listed = new Map((await manager.list(true)).map(agent => [agent.id, agent]));
     const callbacks = callbacksRef();
-    const envSessionId = process.env.ANTIGRAVITY_CONVERSATION_ID || process.env.CODEX_THREAD_ID || process.env.CLAUDE_CODE_SESSION_ID;
+    const envSessionId = process.env.ANTIGRAVITY_CONVERSATION_ID || process.env.CODEX_THREAD_ID || process.env.CLAUDE_CODE_SESSION_ID || process.env.OPENCODE_SESSION_ID;
     for (const agentId of agentIds) {
       const target = listed.get(agentId);
-      const sameHostSession = envSessionId && (target?.parentInfo?.sessionId === envSessionId || callbacks.get(agentId)?.antigravitySessionId === envSessionId);
+      const cb = callbacks.get(agentId);
+      const sameHostSession = envSessionId && (target?.parentInfo?.sessionId === envSessionId || cb?.antigravitySessionId === envSessionId || cb?.opencodeSessionId === envSessionId);
       if (target?.attachedOtherParent && !sameHostSession) {
         throw new Error('Agent belongs to another attached parent');
       }
@@ -145,7 +150,7 @@ function registerSessionTools({ register, manager, server, options, managerOptio
   registerOrganizeTool({ register, manager, callbacksRef });
   register('list_agents', 'Inspect current children, or include saved sessions for explicit recovery, optionally filtered by Antigravity/host sessionId or archiveFilter. Includes dashboard display title, note, pinned and archived state.', {
     includeSaved: z.boolean().default(false),
-    sessionId: safeSessionId.optional(),
+    sessionId: safeSessionId().optional(),
     archiveFilter: z.enum(['all', 'active', 'archived']).default('all'),
   }, async ({ includeSaved, sessionId, archiveFilter }) => {
     const raw = await manager.list(includeSaved);
@@ -156,7 +161,8 @@ function registerSessionTools({ register, manager, server, options, managerOptio
       return org ? { ...agent, displayName: org.title || agent.name, organization: org } : agent;
     });
     const agents = enriched.filter(agent => {
-      if (sessionId && agent.parentInfo?.sessionId !== sessionId && callbacks.get(agent.id)?.antigravitySessionId !== sessionId) return false;
+      const cb = callbacks.get(agent.id);
+      if (sessionId && agent.parentInfo?.sessionId !== sessionId && cb?.antigravitySessionId !== sessionId && cb?.opencodeSessionId !== sessionId) return false;
       const isArchived = Boolean(agent.organization?.archived);
       if (archiveFilter === 'active' && isArchived) return false;
       if (archiveFilter === 'archived' && !isArchived) return false;
@@ -164,15 +170,17 @@ function registerSessionTools({ register, manager, server, options, managerOptio
     });
     return { agents, dashboardUrl: dashboardInfo(manager.storage.root)?.url };
   }, true);
-  register('bind_session', 'Bind the current MCP connection and owned or named agents to an Antigravity or host session so hooks, callbacks and dashboard group them cleanly.', {
-    sessionId: safeSessionId,
-    kind: z.enum(['antigravity', 'codex', 'claude', 'mcp']).default('antigravity'),
+  register('bind_session', 'Bind the current MCP connection and owned or named agents to an Antigravity, OpenCode, or other host session so hooks, callbacks and dashboard group them cleanly.', {
+    sessionId: safeSessionId(),
+    kind: z.enum(['antigravity', 'codex', 'claude', 'opencode', 'mcp']).optional(),
     cwd: z.string().min(1).max(2000).optional(),
     agentIds: z.array(id).max(maxAgentLimit).optional(),
     antigravityCliResume: z.boolean().optional(),
-  }, async ({ sessionId, kind, cwd, agentIds, antigravityCliResume }) => {
+    opencodeCliWake: z.boolean().optional(),
+  }, async ({ sessionId, kind, cwd, agentIds, antigravityCliResume, opencodeCliWake }) => {
     const callbacks = callbacksRef();
-    const parent = normalizeParentInfo({ kind, sessionId, cwd });
+    const effectiveKind = kind || (['antigravity', 'codex', 'claude', 'opencode'].includes(callbacks.host()) ? callbacks.host() : 'antigravity');
+    const parent = normalizeParentInfo({ kind: effectiveKind, sessionId, cwd });
     let bound;
     if (manager.bindSession) {
       bound = await manager.bindSession(parent, agentIds);
@@ -181,18 +189,17 @@ function registerSessionTools({ register, manager, server, options, managerOptio
       const updated = ids.map(agentId => manager.bindParentInfo(agentId, parent));
       bound = { identity: parent, boundAgents: updated.map(a => a.id) };
     }
-    if (kind === 'antigravity') {
+    if (effectiveKind === 'antigravity' || effectiveKind === 'opencode') {
       const targets = bound.legacyController ? (agentIds || []) : (bound.boundAgents || []);
       for (const agentId of targets) {
-        callbacks.configure(agentId, {
-          antigravitySessionId: sessionId,
-          ...(antigravityCliResume !== undefined ? { antigravityCliResume } : {}),
-        });
+        callbacks.configure(agentId, effectiveKind === 'opencode'
+          ? { opencodeSessionId: sessionId, ...(opencodeCliWake !== undefined ? { opencodeCliWake } : {}) }
+          : { antigravitySessionId: sessionId, ...(antigravityCliResume !== undefined ? { antigravityCliResume } : {}) });
       }
     }
     return { ...bound, waitEventsCommand: waitCommandFor({ sessionId }) };
   });
-  register('get_subagent_health', 'Read-only health check for pi-subagents runtime: Pi executable, independent controller, macOS sandbox-exec, authenticated model count, dashboard URL and Antigravity plugin/hooks status.', {}, () => collectHealth(manager, callbacksRef(), managerOptions), true);
+  register('get_subagent_health', 'Read-only health check for pi-subagents runtime: Pi executable, independent controller, macOS sandbox-exec, authenticated model count, dashboard URL, Antigravity plugin/hooks and OpenCode MCP/skill status.', {}, () => collectHealth(manager, callbacksRef(), managerOptions), true);
   register('update_agent_policy', 'Change limits or allowed models for an idle agent only after explicit human authorization. authorizationReference records the actual user instruction; it is a host assertion, not server proof of identity. If supported, the client additionally displays a confirmation form. Restart retains the Pi session and does not replay tasks.', { agentId: id, policy: policyShape, authorizationReference: z.string().min(1).max(2000) }, async values => {
     if (process.env.PI_SUBAGENTS_CONFIRM_POLICY === '1' && server.server.getClientCapabilities()?.elicitation?.form) {
       const confirmation = await server.server.elicitInput({ mode: 'form', message: `Allow changing Pi agent ${values.agentId}? Requested limits: ${JSON.stringify(values.policy)}. Authorization cited by host: ${values.authorizationReference}`, requestedSchema: { type: 'object', properties: { approved: { type: 'boolean', title: 'Allow the requested policy change' } }, required: ['approved'] } });
@@ -210,12 +217,17 @@ function registerSessionTools({ register, manager, server, options, managerOptio
 }
 
 function registerControlTools({ register, manager, resolveSessionId, callbacksRef }) {
-  register('spawn_agent', 'Start an independent Pi agent within explicit user delegation and spending authorization. Supply a stable requestId for safe retries; declare owned files and acceptance criteria. OS tool permissions and policy limits are enforced. Returns immediately; accepted is not completed. You MUST keep calling wait_agent until it settles before ending your turn (see mustWait in the result). callback (default enabled) wakes the parent on settle/question; Antigravity should supply antigravitySessionId (Conversation ID) or call bind_session; Codex should supply callback.codexThreadId.', { ...spawnShape, callback: callbackShape.optional() }, async ({ callback, ...values }) => {
+  register('spawn_agent', 'Start an independent Pi agent within explicit user delegation and spending authorization. Supply a stable requestId for safe retries; declare owned files and acceptance criteria. OS tool permissions and policy limits are enforced. Returns immediately; accepted is not completed. You MUST keep calling wait_agent until it settles before ending your turn (see mustWait in the result). callback (default enabled) wakes the parent on settle/question; Antigravity should supply antigravitySessionId (Conversation ID) or call bind_session; OpenCode should supply opencodeSessionId (or parentSession={kind:"opencode", sessionId}) or call bind_session; Codex should supply callback.codexThreadId.', { ...spawnShape, callback: callbackShape.optional() }, async ({ callback, ...values }) => {
     const callbacks = callbacksRef();
-    const sessionId = resolveSessionId(values, callback);
-    const agent = await manager.spawn({ ...values, ...(sessionId ? { antigravitySessionId: sessionId } : {}) });
-    const configured = callbacks.configure(agent.id, { ...callback, ...(sessionId ? { antigravitySessionId: sessionId } : {}) }, agent.sequence);
-    return { ...agent, callback: configured, mustWait: spawnReminder(agent.id, { sessionId: configured.antigravitySessionId }) };
+    const hostSession = resolveSessionId(values, callback);
+    const sessionFields = hostSession.kind === 'opencode'
+      ? { opencodeSessionId: hostSession.sessionId }
+      : hostSession.kind === 'antigravity'
+        ? { antigravitySessionId: hostSession.sessionId }
+        : {};
+    const agent = await manager.spawn({ ...values, ...sessionFields });
+    const configured = callbacks.configure(agent.id, { ...callback, ...sessionFields }, agent.sequence);
+    return { ...agent, callback: configured, mustWait: spawnReminder(agent.id, { sessionId: configured.antigravitySessionId || configured.opencodeSessionId }) };
   });
   register('read_agent', 'Read durable agent status and recent events after a sequence. Optionally retrieve a bounded transcript from the active Pi process.', {
     agentId: id, afterSequence: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(100).default(50), transcript: z.boolean().default(false),
@@ -239,7 +251,8 @@ function registerControlTools({ register, manager, resolveSessionId, callbacksRe
     agentId: id, message: text, mode: z.enum(['steer', 'follow_up']).default('steer'), messageId: id.optional(),
   }, async ({ agentId, message, mode, messageId }) => {
     const sent = await manager.send(agentId, message, mode, messageId);
-    return { ...sent, mustWait: spawnReminder(agentId, { sessionId: callbacksRef().get(agentId)?.antigravitySessionId }) };
+    const cb = callbacksRef().get(agentId);
+    return { ...sent, mustWait: spawnReminder(agentId, { sessionId: cb?.antigravitySessionId || cb?.opencodeSessionId }) };
   });
   register('reply_question', 'Answer an actual pending child question. Only an explicit answer releases the waiting tool.', {
     questionId: id, message: text,
@@ -256,7 +269,7 @@ function registerControlTools({ register, manager, resolveSessionId, callbacksRe
       for (const item of raw.results || []) {
         if (item.events?.length && item.agent?.id && item.nextSequence) callbacks.markObserved(item.agent.id, item.nextSequence, 'wait_agent');
       }
-      const sessionId = agentIds.map(agentId => callbacks.get(agentId)?.antigravitySessionId).find(Boolean);
+      const sessionId = agentIds.map(agentId => { const cb = callbacks.get(agentId); return cb?.antigravitySessionId || cb?.opencodeSessionId; }).find(Boolean);
       return waitReminder(raw, { sessionId });
     } finally { manager.off('event', onEvent); }
   }, true);
@@ -266,11 +279,13 @@ function registerControlTools({ register, manager, resolveSessionId, callbacksRe
   register('interrupt_agent', 'Clear queued instructions and abort current Pi work. Edits already made remain; stopping is not rollback.', { agentId: id }, ({ agentId }) => manager.interrupt(agentId));
   register('close_agent', 'Stop and close this child while preserving its Pi session and worktree. Does not merge or delete source changes.', { agentId: id }, ({ agentId }) => manager.closeAgent(agentId));
   register('resume_agent', 'Reopen a saved child within explicit human delegation authorization, retaining its model and directory. Fails if another live controller owns it. Does not automatically repeat previous work.', {
-    agentId: id, antigravitySessionId: safeSessionId.optional(), parentSession: parentSessionShape.optional(),
-  }, async ({ agentId, antigravitySessionId, parentSession }) => {
-    const agent = await manager.resume(agentId, { antigravitySessionId, parentSession });
-    const sessionId = antigravitySessionId || (parentSession?.kind === 'antigravity' ? parentSession.sessionId : undefined) || (agent.parentInfo?.kind === 'antigravity' ? agent.parentInfo.sessionId : undefined);
-    if (sessionId) callbacksRef().configure(agentId, { antigravitySessionId: sessionId }, agent.sequence);
+    agentId: id, antigravitySessionId: safeSessionId().optional(), opencodeSessionId: safeSessionId().optional(), parentSession: parentSessionShape().optional(),
+  }, async ({ agentId, antigravitySessionId, opencodeSessionId, parentSession }) => {
+    const agent = await manager.resume(agentId, { antigravitySessionId, opencodeSessionId, parentSession });
+    const agySid = antigravitySessionId || (parentSession?.kind === 'antigravity' ? parentSession.sessionId : undefined) || (agent.parentInfo?.kind === 'antigravity' ? agent.parentInfo.sessionId : undefined);
+    const ocSid = opencodeSessionId || (parentSession?.kind === 'opencode' ? parentSession.sessionId : undefined) || (agent.parentInfo?.kind === 'opencode' ? agent.parentInfo.sessionId : undefined);
+    if (ocSid) callbacksRef().configure(agentId, { opencodeSessionId: ocSid }, agent.sequence);
+    else if (agySid) callbacksRef().configure(agentId, { antigravitySessionId: agySid }, agent.sequence);
     return agent;
   });
   register('read_messages', 'Read durable message receipts, reports and questions. accepted is transport acceptance; consumed means included in model context; acknowledged means parent explicitly confirmed reading. Reuse cursors.', { agentId: id, afterMessageId: id.optional(), limit: z.number().int().min(1).max(100).default(50), unacknowledgedOnly: z.boolean().default(false) }, values => manager.readMessages ? manager.readMessages(values) : manager.messages.read(values.agentId, values), true);
@@ -299,11 +314,20 @@ export async function createServer(options = {}) {
   let callbacks;
   const callbacksRef = () => callbacks;
   function resolveSessionId(values, callback) {
-    const explicit = callback?.antigravitySessionId || values?.antigravitySessionId || (values?.parentSession?.kind === 'antigravity' ? values.parentSession.sessionId : undefined);
-    if (explicit) return explicit;
-    if (callbacks?.host() !== 'antigravity') return undefined;
-    const fromEnv = process.env.ANTIGRAVITY_CONVERSATION_ID?.trim();
-    return fromEnv && sessionIdPattern.test(fromEnv) ? fromEnv : undefined;
+    const ocExplicit = callback?.opencodeSessionId || values?.opencodeSessionId || (values?.parentSession?.kind === 'opencode' ? values.parentSession.sessionId : undefined);
+    if (ocExplicit) return { kind: 'opencode', sessionId: ocExplicit };
+    const agyExplicit = callback?.antigravitySessionId || values?.antigravitySessionId || (values?.parentSession?.kind === 'antigravity' ? values.parentSession.sessionId : undefined);
+    if (agyExplicit) return { kind: 'antigravity', sessionId: agyExplicit };
+    const host = callbacks?.host();
+    if (host === 'opencode') {
+      const fromEnv = process.env.OPENCODE_SESSION_ID?.trim();
+      return fromEnv && sessionIdPattern.test(fromEnv) ? { kind: 'opencode', sessionId: fromEnv } : {};
+    }
+    if (host === 'antigravity') {
+      const fromEnv = process.env.ANTIGRAVITY_CONVERSATION_ID?.trim();
+      return fromEnv && sessionIdPattern.test(fromEnv) ? { kind: 'antigravity', sessionId: fromEnv } : {};
+    }
+    return {};
   }
   registerSessionTools({ register, manager, server, options, managerOptions, resolveSessionId, callbacksRef });
   registerControlTools({ register, manager, resolveSessionId, callbacksRef });

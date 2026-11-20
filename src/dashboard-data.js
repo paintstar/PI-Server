@@ -340,11 +340,14 @@ export class DashboardData {
   callbackInfo(id) {
     const raw = readJsonSafe(path.join(this.root, 'callbacks', `${id}.json`));
     if (!raw) return null;
+    const deliveredSeq = Math.max(raw.deliveredSeq || 0, raw.antigravityDeliveredSeq || 0);
     return {
       host: raw.host || null,
       enabled: !!raw.enabled,
       antigravitySessionId: raw.antigravitySessionId || null,
-      antigravityDeliveredSeq: raw.antigravityDeliveredSeq || 0,
+      antigravityDeliveredSeq: deliveredSeq,
+      deliveredSeq,
+      opencodeSessionId: raw.opencodeSessionId || null,
       claudeSessionId: raw.claudeSessionId || null,
       codexThreadId: raw.codexThreadId || null,
       lastObservedBy: raw.lastObservedBy || null,
@@ -363,14 +366,15 @@ export class DashboardData {
     const questionIds = new Set(record.questionIds || []);
     const activity = summarizeActivity(events);
     const callback = this.callbackInfo(id);
-    const parentInfo = record.parentInfo || (callback?.antigravitySessionId
-      ? { kind: 'antigravity', sessionId: callback.antigravitySessionId, cwd: record.workspace?.sourceCwd || record.workspace?.cwd }
+    const cbSid = callback?.antigravitySessionId || callback?.opencodeSessionId;
+    const parentInfo = record.parentInfo || (cbSid
+      ? { kind: callback?.opencodeSessionId ? 'opencode' : 'antigravity', sessionId: cbSid, cwd: record.workspace?.sourceCwd || record.workspace?.cwd }
       : undefined);
     const activeWatcherList = watchers ?? this.activeWatchers();
     const watcherActive = activeWatcherList.some(w =>
       w.agentIds.includes(id)
       || (parentInfo?.sessionId && w.sessionId === parentInfo.sessionId)
-      || (callback?.antigravitySessionId && w.sessionId === callback.antigravitySessionId)
+      || (cbSid && w.sessionId === cbSid)
     );
     return { id, name: mark.title || record.name, rawName: record.name, title: mark.title || null, note: mark.note || null, pinned: Boolean(mark.pinned), archived, archivedAt: archived ? mark.archivedAt || null : null,
       status, recordedStatus: record.status, controllerAlive, marked, movedTo: mark.group, parentId: record.parentId, contextWindow: this.contextWindow(record.model), parentInfo,

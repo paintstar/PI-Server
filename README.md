@@ -1,7 +1,7 @@
 <div align="center">
   <img src="docs/assets/logo.svg" width="88" height="88" alt="Pi Subagents Logo" />
   <h1>Pi Subagents · Pi 调度台</h1>
-  <p><strong>面向 Google Antigravity、Claude Code 与 OpenAI Codex 的多模型子代理 MCP 调度平台与实时控制台</strong></p>
+  <p><strong>面向 Google Antigravity、Claude Code、OpenAI Codex 与 OpenCode 的多模型子代理 MCP 调度平台与实时控制台</strong></p>
 
   <p>
     <a href="https://github.com/mumuxsy/pi-subagents/actions/workflows/ci.yml"><img src="https://github.com/mumuxsy/pi-subagents/actions/workflows/ci.yml/badge.svg" alt="CI Status" /></a>
@@ -26,12 +26,12 @@
 
 ## 核心特性
 
-- **一处安装，三端原生协同**：解除了与单一客户端的绑定，同时适配 **Google Antigravity**（自动打包安装插件、规则、技能与 `PreInvocation` / `Stop` 生命周期钩子）、**Claude Code**（支持 `claude/channel` 通知与后台事件监听）以及 **OpenAI Codex**（支持 `codex queue` 会话队列唤醒）。
+- **一处安装，四端原生协同**：解除了与单一客户端的绑定，同时适配 **Google Antigravity**（自动打包安装插件、规则、技能与 `PreInvocation` / `Stop` 生命周期钩子）、**Claude Code**（支持 `claude/channel` 通知与后台事件监听）、**OpenAI Codex**（支持 `codex queue` 会话队列唤醒）以及 **OpenCode**（写入 `opencode.jsonc` `mcp.servers`、自动安装 `SKILL.md` 并支持会话绑定、`wait-events` 监听与可选 CLI 会话唤醒）。
 - **独立控制进程，断线不丢现场**：MCP 桥接进程通过私密 Unix Socket 连接后台独立控制器（`src/controller.js`）。主聊天窗口关闭或重连不会终止运行中的 Pi 子进程与待答复问题，新会话可随时调用 `resume_agent` 无损接手。
 - **可靠双向通信与阻塞式提问**：子代理可通过 `agent_message` 汇报阶段进展或与同组兄弟代理协作，遇到需求歧义时调用 `ask_parent` 原地暂停等待；主会话调用 `reply_question` 明确答复后子代理立即继续执行，支持幂等 `requestId` / `messageId` 防重放。
 - **实时三栏控制台“Pi 调度台”**：按宿主父会话自动分组，中间区域支持逐字流式推理与折叠式工具执行回放，右侧检查器提供会话概况、输出速度（`tok/s`）、上下文窗口水位与只读 Git 工作树内联差异（Diff），并与 `organize_agents` 工具实时同步自定义标题、备注、置顶与归档状态。
 - **模型能力画像与脱敏设置中心**：提供 `get_model_profiles` 工具与面板左下角设置中心，集中维护各服务商启停、脱敏 API Key、本机 Codex OAuth 一键导入、自定义上下文窗口（支持设为 1M 上下文并同步写回 `models.json`）、推荐思考强度与中文能力描述，让主代理在派活前有据可依。
-- **macOS Seatbelt 内核级三档沙箱**：通过 `/usr/bin/sandbox-exec` 约束工具与后代 shell 进程，默认在 Git 仓库分配独立 `worktree` 分支并在共享目录下强制校验不重叠的 `ownedPaths`；默认屏蔽 `~/.pi`、`~/.codex`、`~/.ssh` 等凭据目录，防止密钥外泄。
+- **macOS Seatbelt 内核级三档沙箱**：通过 `/usr/bin/sandbox-exec` 约束工具与后代 shell 进程，默认在 Git 仓库分配独立 `worktree` 分支并在共享目录下强制校验不重叠的 `ownedPaths`；默认屏蔽 `~/.pi`、`~/.codex`、`~/.ssh`、`~/.config/opencode` 与 `~/.local/share/opencode` 等凭据目录，防止密钥外泄。
 - **多渠道套餐额度只读查询**：内置 `get_quota` 工具，在内存中只读使用本机 Pi 凭据查询 Codex、智谱 GLM / Z.ai、MiniMax Token Plan、DeepSeek 与 OpenCode Go 的周期剩余比例或账户余额，不改写凭据文件，也不暴露账号身份。
 
 ## 系统架构
@@ -42,11 +42,12 @@ flowchart LR
     AGY["Google Antigravity\n(MCP + Hooks + Watcher)"]
     CC["Claude Code\n(MCP + Channel / Watcher)"]
     CDX["OpenAI Codex\n(MCP + Thread Queue)"]
+    OC["OpenCode\n(MCP + Skill + Watcher/CLI)"]
   end
 
   subgraph Bridge["协议桥接与回调层"]
     SRV["src/server.js\n(24 个 MCP 工具 / Tasks / 资源)"]
-    CB["src/callbacks.js\n(单调游标去重与三端唤醒)"]
+    CB["src/callbacks.js\n(单调游标去重与四端唤醒)"]
   end
 
   subgraph Core["持久化守护层 (127.0.0.1 / Unix Socket)"]
@@ -62,10 +63,12 @@ flowchart LR
   AGY <--> SRV
   CC <--> SRV
   CDX <--> SRV
+  OC <--> SRV
   SRV <--> CTRL
   CB <--> AGY
   CB <--> CC
   CB <--> CDX
+  CB <--> OC
   CTRL --> CB
   CTRL <--> PI1
   CTRL <--> PI2
@@ -102,7 +105,7 @@ flowchart LR
 - **操作系统**：macOS（沙箱执行依赖系统内置的 `/usr/bin/sandbox-exec`）
 - **Node.js**：`>= 22.19.0`
 - **Pi CLI**：`>= 1.0.2`（需提前在终端完成 `pi` 安装及至少一个模型渠道登录）
-- **宿主工具**：Google Antigravity、Claude Code 或 OpenAI Codex 任一即可
+- **宿主工具**：Google Antigravity、Claude Code、OpenAI Codex 或 OpenCode 任一即可
 
 ### 安装与接入
 
@@ -115,7 +118,7 @@ npm ci --ignore-scripts
 npm run check
 npm test
 
-# 2. 一键接入本机已安装的 Antigravity、Claude Code 与 Codex
+# 2. 一键接入本机已安装的 Antigravity、Claude Code、Codex 与 OpenCode
 npm run install:all
 ```
 
@@ -125,10 +128,12 @@ npm run install:all
 npm run install:antigravity   # 生成并严格校验 ~/.gemini/config/plugins/pi-subagents 插件包
 npm run install:claude        # 写入 ~/.claude.json 用户级 MCP 配置
 npm run install:codex         # 写入 ~/.codex/config.toml 全局 MCP 配置
+npm run install:opencode      # 写入 ~/.config/opencode/opencode.jsonc 的 mcp.servers 并安装 Skill
 
 npm run uninstall:antigravity # 移除 Antigravity 插件接入
 npm run uninstall:claude      # 移除 Claude Code 接入
 npm run uninstall:codex       # 移除 Codex 接入
+npm run uninstall:opencode    # 保留注释安全移除 OpenCode MCP 配置与 Skill
 ```
 
 > **提示**：安装器在客户端配置中写入了当前仓库的绝对路径，移动仓库目录或升级 Node 版本后请重新运行一次安装命令。已打开的宿主聊天窗口重开新会话即可加载新版工具。
@@ -142,15 +147,16 @@ npm run dashboard
 # 浏览器打开 http://127.0.0.1:3141/
 ```
 
-## 三大宿主接入与回调唤醒
+## 四大宿主接入与回调唤醒
 
-MCP 协议本身不保证在主代理结束一轮回复后重新唤醒模型，因此 Pi Subagents 针对三大宿主分别提供了防漏等提醒（`mustWait`）与原生唤醒通道：
+MCP 协议本身不保证在主代理结束一轮回复后重新唤醒模型，因此 Pi Subagents 针对四大宿主分别提供了防漏等提醒（`mustWait`）与原生唤醒通道：
 
 | 宿主客户端 | 会话绑定方式 | 自动唤醒与防漏等机制 |
 | --- | --- | --- |
-| **Google Antigravity** | `spawn_agent` 传入 `antigravitySessionId`（当前会话 ID），或调用 `bind_session` | 插件内置 `PreInvocation` 与 `Stop` 钩子自动注入未读事件并拦截未挂监听器的过早收尾；同时可运行返回结果中的 `mustWait.antigravityBackgroundCommand`（`node scripts/wait-events.js --session <id>`）后台监听即时唤醒，全部通道共用 `antigravityDeliveredSeq` 单调游标去重。 |
+| **Google Antigravity** | `spawn_agent` 传入 `antigravitySessionId`（当前会话 ID），或调用 `bind_session` | 插件内置 `PreInvocation` 与 `Stop` 钩子自动注入未读事件并拦截未挂监听器的过早收尾；同时可运行返回结果中的 `mustWait.antigravityBackgroundCommand`（`node scripts/wait-events.js --session <id>`）后台监听即时唤醒，全部通道共用单调游标去重。 |
 | **Claude Code** | 自动识别 `CLAUDE_CODE_SESSION_ID` 并在面板分组 | 以开发通道启动（`claude --dangerously-load-development-channels server:pi-subagents`）时直接推送 `notifications/claude/channel`；普通模式下将 `npm run wait-events -- --agent <id>` 放到后台运行即可在事件到达时唤醒主会话。 |
 | **OpenAI Codex** | 在 shell 读取 `echo $CODEX_THREAD_ID`，传入 `callback.codexThreadId` | 子代理完成、提问、失败或触及策略上限时，桥接进程自动执行 `codex queue --thread <id> --message ...` 将通知排入对应会话队列。 |
+| **OpenCode** | `spawn_agent` 传入 `opencodeSessionId`（或 `parentSession: { kind: "opencode", sessionId }`），或调用 `bind_session(kind="opencode")` | 自动识别 `opencode` MCP 客户端并安装 `~/.config/opencode/skills/pi-subagents/SKILL.md`；支持 `wait_agent`、后台 `mustWait.opencodeBackgroundCommand`（`scripts/wait-events.js --session <id>`）以及可选 `callback.opencodeCliWake=true` 通过 `opencode run --session <id>` 唤醒会话，全通道共用单调游标去重。 |
 
 ### 对话调度示例
 

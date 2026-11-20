@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { z } from 'zod';
 import { maxAgentLimit } from './manager.js';
 import { atomicWriteJson, readJsonSafe } from './storage.js';
@@ -13,6 +13,8 @@ export const callbackShape = z.object({
   codexThreadId: z.string().regex(/^[0-9a-f-]{36}$/).optional(),
   antigravitySessionId: z.string().trim().min(1).max(200).regex(sessionIdPattern).optional(),
   antigravityCliResume: z.boolean().default(false),
+  opencodeSessionId: z.string().trim().min(1).max(200).regex(sessionIdPattern).optional(),
+  opencodeCliWake: z.boolean().default(false),
   events: z.array(z.enum(callbackEvents)).min(1).optional(),
 });
 
@@ -23,28 +25,38 @@ export function readCallbackRecord(root, agentId) {
   return readJsonSafe(path.join(root, 'callbacks', `${agentId}.json`));
 }
 
-export function advanceAntigravityCursor(root, agentId, sequence, { source = 'wait_agent', sessionId } = {}) {
+export function deliveredCursorOf(record) {
+  return Math.max(record?.deliveredSeq || 0, record?.antigravityDeliveredSeq || 0);
+}
+
+export function advanceDeliveredCursor(root, agentId, sequence, { source = 'wait_agent', sessionId, host } = {}) {
   if (!sequence || !isUuid(agentId)) return null;
   const old = readCallbackRecord(root, agentId);
   if (!old && !sessionId) return null;
-  const next = Math.max(old?.antigravityDeliveredSeq || 0, sequence);
-  if (old && next <= (old.antigravityDeliveredSeq || 0)) return old;
+  const current = deliveredCursorOf(old);
+  const next = Math.max(current, sequence);
+  if (old && next <= current && old.deliveredSeq === next) return old;
+  const resolvedHost = old?.host || host || 'antigravity';
   const updated = old
-    ? { ...old, antigravityDeliveredSeq: next, lastObservedBy: source, updatedAt: new Date().toISOString() }
+    ? { ...old, deliveredSeq: next, antigravityDeliveredSeq: next, lastObservedBy: source, updatedAt: new Date().toISOString() }
     : {
         agentId,
         enabled: true,
         events: defaultEvents,
-        host: 'antigravity',
-        antigravitySessionId: sessionId,
-        antigravityCliResume: false,
+        host: resolvedHost,
+        ...(resolvedHost === 'opencode' ? { opencodeSessionId: sessionId, opencodeCliWake: false } : { antigravitySessionId: sessionId, antigravityCliResume: false }),
         since: 0,
+        deliveredSeq: next,
         antigravityDeliveredSeq: next,
         lastObservedBy: source,
         updatedAt: new Date().toISOString(),
       };
   atomicWriteJson(path.join(root, 'callbacks', `${agentId}.json`), updated);
   return updated;
+}
+
+export function advanceAntigravityCursor(root, agentId, sequence, options = {}) {
+  return advanceDeliveredCursor(root, agentId, sequence, { host: 'antigravity', ...options });
 }
 
 export function sessionBoundAgentIds(storage, sessionId, { respectEnabled = true, extraIds = [] } = {}) {
@@ -55,7 +67,8 @@ export function sessionBoundAgentIds(storage, sessionId, { respectEnabled = true
     for (const file of fs.readdirSync(callbacksDir).filter(name => name.endsWith('.json'))) {
       const id = file.slice(0, -5);
       const cb = readCallbackRecord(storage.root, id);
-      if (cb?.antigravitySessionId === sessionId && (!respectEnabled || cb.enabled !== false) && fs.existsSync(path.join(storage.root, id, 'agent.json'))) {
+      const matched = cb?.antigravitySessionId === sessionId || cb?.opencodeSessionId === sessionId;
+      if (matched && (!respectEnabled || cb.enabled !== false) && fs.existsSync(path.join(storage.root, id, 'agent.json'))) {
         ids.add(id);
       }
     }
@@ -71,7 +84,7 @@ export function sessionBoundAgentIds(storage, sessionId, { respectEnabled = true
 
 const defaultEventSet = new Set(defaultEvents);
 
-export function scanAgentEvents(storage, agentId, { afterSequence = 0, eventTypes = defaultEvents, source = 'observer', sessionId } = {}) {
+export function scanAgentEvents(storage, agentId, { afterSequence = 0, eventTypes = defaultEvents, source = 'observer', sessionId, host } = {}) {
   const allowed = eventTypes instanceof Set ? eventTypes : new Set(eventTypes);
   const matched = [];
   let cursor = afterSequence;
@@ -99,7 +112,8 @@ export function scanAgentEvents(storage, agentId, { afterSequence = 0, eventType
     if (batch.length < 100) break;
   }
   if (sharedCursor > afterSequence && (sessionId || readCallbackRecord(storage.root, agentId))) {
-    advanceAntigravityCursor(storage.root, agentId, sharedCursor, { source, sessionId });
+    const inferredHost = host || readJsonSafe(path.join(storage.root, agentId, 'agent.json'))?.parentInfo?.kind;
+    advanceDeliveredCursor(storage.root, agentId, sharedCursor, { source, sessionId, host: inferredHost });
   }
   return { matched, cursor };
 }
@@ -129,10 +143,17 @@ export function eventSnapshot(event) {
 }
 
 export class Callbacks {
-  constructor({ root, server, codexExecutable = process.env.CODEX_EXECUTABLE || 'codex', agyExecutable = process.env.AGY_EXECUTABLE || 'agy', run = execFile }) {
+  constructor({
+    root, server,
+    codexExecutable = process.env.CODEX_EXECUTABLE || 'codex',
+    agyExecutable = process.env.AGY_EXECUTABLE || 'agy',
+    opencodeExecutable = process.env.OPENCODE_EXECUTABLE || 'opencode',
+    run = execFile,
+    spawnDetached = spawn,
+  }) {
     this.root = root;
     this.directory = path.join(root, 'callbacks');
-    this.server = server; this.codexExecutable = codexExecutable; this.agyExecutable = agyExecutable; this.run = run;
+    this.server = server; this.codexExecutable = codexExecutable; this.agyExecutable = agyExecutable; this.opencodeExecutable = opencodeExecutable; this.run = run; this.spawnDetached = spawnDetached;
     this.queues = new Map();
   }
   file(agentId) {
@@ -150,27 +171,40 @@ export class Callbacks {
     const name = this.server.getClientVersion()?.name || '';
     if (/codex/i.test(name)) return 'codex';
     if (/claude/i.test(name)) return 'claude';
+    if (/opencode/i.test(name)) return 'opencode';
     if (/antigravity|agy|gemini/i.test(name) || process.env.ANTIGRAVITY_CONVERSATION_ID || process.env.ANTIGRAVITY_AGENT) return 'antigravity';
+    if (process.env.OPENCODE_SESSION_ID || process.env.OPENCODE || process.env.PI_SUBAGENTS_HOST === 'opencode') return 'opencode';
     return 'other';
   }
   routes(config) {
     const host = config.host || this.host();
-    const base = { claudeChannel: host === 'claude', codexQueue: Boolean(config.codexThreadId) };
-    if (host !== 'antigravity' && !config.antigravitySessionId) return base;
-    return {
-      ...base,
-      antigravityHook: Boolean(config.antigravitySessionId),
-      antigravityCli: Boolean(config.antigravitySessionId && config.antigravityCliResume),
-      antigravityWaitCommand: waitCommandFor({ agentId: config.agentId, sessionId: config.antigravitySessionId }),
-    };
+    const result = { claudeChannel: host === 'claude', codexQueue: Boolean(config.codexThreadId) };
+    if (host === 'antigravity' || config.antigravitySessionId) {
+      Object.assign(result, {
+        antigravityHook: Boolean(config.antigravitySessionId),
+        antigravityCli: Boolean(config.antigravitySessionId && config.antigravityCliResume),
+        antigravityWaitCommand: waitCommandFor({ agentId: config.agentId, sessionId: config.antigravitySessionId }),
+      });
+    }
+    if (host === 'opencode' || config.opencodeSessionId) {
+      Object.assign(result, {
+        opencodeSession: Boolean(config.opencodeSessionId),
+        opencodeCli: Boolean(config.opencodeSessionId && config.opencodeCliWake),
+        opencodeWaitCommand: waitCommandFor({ agentId: config.agentId, sessionId: config.opencodeSessionId }),
+      });
+    }
+    return result;
   }
   configure(agentId, options = {}, since = 0) {
     const old = this.get(agentId);
-    const host = old?.host || this.host();
-    const envSessionId = host === 'codex' || host === 'claude' ? undefined : process.env.ANTIGRAVITY_CONVERSATION_ID;
-    const rawSid = options.antigravitySessionId || old?.antigravitySessionId || envSessionId;
-    const antigravitySessionId = typeof rawSid === 'string' && sessionIdPattern.test(rawSid.trim()) ? rawSid.trim() : undefined;
-    const delivered = Math.max(since, old?.antigravityDeliveredSeq || 0);
+    const host = options.opencodeSessionId ? 'opencode' : options.antigravitySessionId ? 'antigravity' : (old?.host || this.host());
+    const envAgySid = host === 'antigravity' || host === 'other' ? process.env.ANTIGRAVITY_CONVERSATION_ID : undefined;
+    const rawAgySid = options.antigravitySessionId || old?.antigravitySessionId || envAgySid;
+    const antigravitySessionId = typeof rawAgySid === 'string' && sessionIdPattern.test(rawAgySid.trim()) ? rawAgySid.trim() : undefined;
+    const envOcSid = host === 'opencode' ? process.env.OPENCODE_SESSION_ID : undefined;
+    const rawOcSid = options.opencodeSessionId || old?.opencodeSessionId || envOcSid;
+    const opencodeSessionId = typeof rawOcSid === 'string' && sessionIdPattern.test(rawOcSid.trim()) ? rawOcSid.trim() : undefined;
+    const delivered = Math.max(since, deliveredCursorOf(old));
     const value = {
       agentId,
       enabled: options.enabled ?? old?.enabled ?? true,
@@ -178,8 +212,11 @@ export class Callbacks {
       codexThreadId: options.codexThreadId || old?.codexThreadId || process.env.CODEX_THREAD_ID || undefined,
       antigravitySessionId,
       antigravityCliResume: options.antigravityCliResume ?? old?.antigravityCliResume ?? false,
+      opencodeSessionId,
+      opencodeCliWake: options.opencodeCliWake ?? old?.opencodeCliWake ?? false,
       host,
       since: Math.max(since, old?.since || 0),
+      deliveredSeq: delivered,
       antigravityDeliveredSeq: delivered,
       lastEvent: old?.lastEvent,
       lastDelivery: old?.lastDelivery,
@@ -189,7 +226,7 @@ export class Callbacks {
     return { ...value, routes: this.routes(value) };
   }
   markObserved(agentId, sequence, source = 'wait_agent') {
-    return advanceAntigravityCursor(this.root, agentId, sequence, { source });
+    return advanceDeliveredCursor(this.root, agentId, sequence, { source });
   }
   handle(event) {
     const config = this.get(event.agentId);
@@ -229,11 +266,33 @@ export class Callbacks {
     } else if (routes.antigravityHook) {
       results.antigravityHook = 'pending_hook_or_watcher';
     }
+    if (routes.opencodeCli) {
+      results.opencodeCli = await new Promise(resolve => {
+        if (this.run !== execFile) {
+          this.run(this.opencodeExecutable, ['run', '--session', config.opencodeSessionId, content], { detached: true },
+            error => resolve(error ? `failed: ${error.message.split('\n')[0]}` : 'woken'));
+          return;
+        }
+        try {
+          const child = this.spawnDetached(this.opencodeExecutable, ['run', '--session', config.opencodeSessionId, content], { detached: true, stdio: 'ignore' });
+          let settled = false;
+          child.once('error', error => { if (!settled) { settled = true; resolve(`failed: ${error.message.split('\n')[0]}`); } });
+          child.once('spawn', () => { child.unref?.(); if (!settled) { settled = true; resolve('woken'); } });
+        } catch (error) {
+          resolve(`failed: ${error.message.split('\n')[0]}`);
+        }
+      });
+      if (results.opencodeCli === 'woken') cliDelivered = Math.max(cliDelivered, event.sequence);
+    } else if (routes.opencodeSession) {
+      results.opencodeSession = 'pending_watcher';
+    }
     const latest = this.get(event.agentId) || config;
+    const nextDelivered = Math.max(deliveredCursorOf(latest), cliDelivered);
     const merged = {
       ...latest,
       since: Math.max(latest.since || 0, event.sequence),
-      antigravityDeliveredSeq: Math.max(latest.antigravityDeliveredSeq || 0, cliDelivered),
+      deliveredSeq: nextDelivered,
+      antigravityDeliveredSeq: nextDelivered,
       lastEvent: config.lastEvent,
       lastDelivery: { sequence: event.sequence, type: event.type, time: new Date().toISOString(), results },
       updatedAt: new Date().toISOString(),
@@ -247,7 +306,7 @@ export function installCallbacks(server, manager, register) {
   server.server.registerCapabilities({ experimental: { 'claude/channel': {} } });
   const callbacks = new Callbacks({ root: manager.storage.root, server: server.server });
   manager.on('event', event => { callbacks.handle(event); });
-  register('set_agent_callback', 'Configure parent wake-up callbacks for owned agents. Supports Antigravity hooks/background watcher (pass callback.antigravitySessionId = Conversation ID, optionally antigravityCliResume=true), Claude Code channel notifications, and Codex queue (codexThreadId). Default events: settled, question, process_failed, budget_limit, control_failed.', {
+  register('set_agent_callback', 'Configure parent wake-up callbacks for owned agents. Supports Antigravity hooks/background watcher (pass callback.antigravitySessionId = Conversation ID, optionally antigravityCliResume=true), OpenCode session watcher/CLI wake (pass callback.opencodeSessionId, optionally opencodeCliWake=true), Claude Code channel notifications, and Codex queue (codexThreadId). Default events: settled, question, process_failed, budget_limit, control_failed.', {
     agentIds: z.array(z.string().uuid()).min(1).max(maxAgentLimit), ...callbackShape.shape,
   }, async ({ agentIds, ...options }) => {
     const result = [];

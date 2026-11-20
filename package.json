@@ -3,7 +3,7 @@
   "version": "1.7.0",
   "license": "MIT",
   "type": "module",
-  "description": "面向 Antigravity、Claude Code 与 Codex 的 Pi 多模型子代理调度平台（MCP 服务与实时 Web 调度台）",
+  "description": "面向 Antigravity、Claude Code、Codex 与 OpenCode 的 Pi 多模型子代理调度平台（MCP 服务与实时 Web 调度台）",
   "author": "mumuxsy",
   "homepage": "https://github.com/mumuxsy/pi-subagents#readme",
   "repository": {
@@ -22,6 +22,7 @@
     "antigravity",
     "claude-code",
     "codex",
+    "opencode",
     "agent-orchestration",
     "sandbox"
   ],
@@ -48,9 +49,11 @@
     "install:codex": "node scripts/install.js --target=codex",
     "install:claude": "node scripts/install.js --target=claude",
     "install:antigravity": "node scripts/install.js --target=antigravity",
+    "install:opencode": "node scripts/install.js --target=opencode",
     "uninstall:codex": "node scripts/install.js --target=codex --remove",
     "uninstall:claude": "node scripts/install.js --target=claude --remove",
     "uninstall:antigravity": "node scripts/install.js --target=antigravity --remove",
+    "uninstall:opencode": "node scripts/install.js --target=opencode --remove",
     "verify:communication": "node scripts/verify-communication.js",
     "verify:live": "node scripts/verify-live.js",
     "wait-events": "node scripts/wait-events.js"

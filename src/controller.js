@@ -105,7 +105,11 @@ const isParentAttached = id => Boolean(parents.get(id)?.connected && processAliv
 function resumeAgent(parentId, v) {
   const current = manager.agents.get(v.agentId);
   const parentIdentityInfo = parents.get(parentId)?.identity;
-  const explicit = v.antigravitySessionId ? { kind: 'antigravity', sessionId: v.antigravitySessionId, cwd: parentIdentityInfo?.cwd } : v.parentSession || parentIdentityInfo;
+  const explicit = v.antigravitySessionId
+    ? { kind: 'antigravity', sessionId: v.antigravitySessionId, cwd: parentIdentityInfo?.cwd }
+    : v.opencodeSessionId
+      ? { kind: 'opencode', sessionId: v.opencodeSessionId, cwd: parentIdentityInfo?.cwd }
+      : v.parentSession || parentIdentityInfo;
   if (current && current.record.parentId !== parentId && isParentAttached(current.record.parentId)) {
     throw new Error('Agent belongs to an attached parent');
   }

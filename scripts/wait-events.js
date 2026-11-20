@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { Storage, atomicWriteJson, readJsonSafe } from '../src/storage.js';
 import {
-  callbackEvents, callbackText, readCallbackRecord, sessionBoundAgentIds, scanAgentEvents,
+  callbackEvents, callbackText, readCallbackRecord, deliveredCursorOf, sessionBoundAgentIds, scanAgentEvents,
 } from '../src/callbacks.js';
 import { assertSafeSessionId } from '../src/wait-reminder.js';
 
@@ -116,7 +116,7 @@ for (;;) {
   let matched = 0;
   for (const id of targets) {
     if (after[id] === undefined) {
-      after[id] = explicitOverrides.has(id) ? explicitOverrides.get(id) : (readCallbackRecord(root, id)?.antigravityDeliveredSeq || 0);
+      after[id] = explicitOverrides.has(id) ? explicitOverrides.get(id) : deliveredCursorOf(readCallbackRecord(root, id));
     }
     const scanned = scanAgentEvents(storage, id, {
       afterSequence: after[id],

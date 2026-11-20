@@ -29,8 +29,8 @@
 
 所有新启动的 Pi 会话只加载内置通信扩展（`extensions/communication.ts`）与权限扩展（`extensions/policy.ts`），权限扩展未完成握手确认前不会下发任何任务：
 
-1. **`strict`（默认严格隔离）**：子代理只能读取工作目录与运行必需的系统目录（允许解析外部真实路径的祖先目录元数据以兼容 Python 和 SQLite），只能写入声明的 `ownedPaths` 与私有临时目录；禁止读写 `~/.pi`、`~/.codex`、`~/.ssh` 及管理进程状态目录。
-2. **`dev`（开发模式）**：允许子代理运行 `uv`、本地虚拟环境、构建缓存（`~/.cache`、`~/Library/Caches`）并在独立 Git 工作树内执行完整测试与本地提交，同时继续在内核层屏蔽 `~/.pi`、`~/.codex`、`~/.ssh` 与管理进程状态目录。
+1. **`strict`（默认严格隔离）**：子代理只能读取工作目录与运行必需的系统目录（允许解析外部真实路径的祖先目录元数据以兼容 Python 和 SQLite），只能写入声明的 `ownedPaths` 与私有临时目录；禁止读写 `~/.pi`、`~/.codex`、`~/.ssh`、`~/.config/opencode`、`~/.local/share/opencode` 及管理进程状态目录。
+2. **`dev`（开发模式）**：允许子代理运行 `uv`、本地虚拟环境、构建缓存（`~/.cache`、`~/Library/Caches`）并在独立 Git 工作树内执行完整测试与本地提交，同时继续在内核层屏蔽 `~/.pi`、`~/.codex`、`~/.ssh`、`~/.config/opencode`、`~/.local/share/opencode` 与管理进程状态目录。
 3. **`bypass`（完全放开路径）**：放开工作区外及凭据目录读写权限并继承常用 `PATH`，仅继续保护管理进程状态目录（防止伪造其他代理令牌），只适用于用户明确信任的本机运维任务。
 
 修改已有空闲代理的策略需调用 `update_agent_policy` 并附上用户指令说明 `authorizationReference`；设置 `PI_SUBAGENTS_CONFIRM_POLICY=1` 时，支持 MCP Elicitation 的客户端还会弹出交互确认表单。
@@ -39,7 +39,8 @@
 
 - **资源与通知**：暴露 `pi-agent://<agentId>/events` 可订阅资源，发生状态变化时推送 `notifications/resources/updated`、`notifications/message` 与绑定对应 `progressToken` 的 `notifications/progress`。
 - **标准异步 Tasks**：对声明支持 MCP 2025-11-25 Tasks 的客户端提供 `run_agent_task` 与 `resume_task`，完整覆盖 `working`、`input_required`、`completed`、`failed`、`cancelled` 状态流转与 TTL 过期清理（默认 24 小时，最高 7 天）。
-- **三大宿主回调唤醒**：由于标准 MCP 通知无法通用唤醒已结束本轮回复的宿主模型，系统在桥接层实现了三套宿主专用唤醒通道：
-  - **Google Antigravity**：通过 `antigravitySessionId` 或 `bind_session` 关联会话，由插件注册的 `PreInvocation` / `Stop` 钩子与后台 `scripts/wait-events.js --session <id>` 协同唤醒，依托 `callbacks/<agentId>.json` 中的 `antigravityDeliveredSeq` 单调游标与 `watchers/<pid>.json` 活跃心跳避免重复投递或漏等。
+- **四大宿主回调唤醒**：由于标准 MCP 通知无法通用唤醒已结束本轮回复的宿主模型，系统在桥接层实现了四套宿主专用唤醒通道：
+  - **Google Antigravity**：通过 `antigravitySessionId` 或 `bind_session` 关联会话，由插件注册的 `PreInvocation` / `Stop` 钩子与后台 `scripts/wait-events.js --session <id>` 协同唤醒，依托 `callbacks/<agentId>.json` 中的共享单调游标（`deliveredSeq` / `antigravityDeliveredSeq`）与 `watchers/<pid>.json` 活跃心跳避免重复投递或漏等。
   - **Claude Code**：支持 `notifications/claude/channel` 原生开发通道唤醒，或通用运行后台命令 `npm run wait-events -- --agent <id>` 在事件到达时唤醒主会话。
   - **OpenAI Codex**：传入 `callback.codexThreadId` 后，桥接进程在子代理结束、提问或异常时调用 `codex queue --thread <id>` 将事件排入对应会话队列。
+  - **OpenCode**：通过 `opencodeSessionId` / `parentSession(kind="opencode")` 或 `bind_session(kind="opencode")` 关联会话，依托共享单调游标支持后台 `scripts/wait-events.js --session <id>` 监听与可选 `callback.opencodeCliWake=true` 调用 `opencode run --session <id>` 唤醒会话。

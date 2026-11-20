@@ -4,6 +4,8 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { atomicWriteJson } from '../src/storage.js';
+import { opencodeConfigDir } from '../src/opencode-config.js';
+import { installOpencode, uninstallOpencode } from './opencode-install.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
@@ -12,8 +14,8 @@ const args = process.argv.slice(2);
 const remove = args.includes('--remove');
 const targetArg = args.find(arg => arg.startsWith('--target='));
 const target = targetArg === undefined ? 'all' : targetArg.slice(9);
-if (args.some(arg => arg !== '--remove' && !arg.startsWith('--target=')) || !['all', 'codex', 'claude', 'antigravity'].includes(target)) {
-  throw new Error('Usage: install.js [--target=all|codex|claude|antigravity] [--remove]');
+if (args.some(arg => arg !== '--remove' && !arg.startsWith('--target=')) || !['all', 'codex', 'claude', 'antigravity', 'opencode'].includes(target)) {
+  throw new Error('Usage: install.js [--target=all|codex|claude|antigravity|opencode] [--remove]');
 }
 
 function resolve(command) {
@@ -30,13 +32,15 @@ function resolve(command) {
 }
 
 const antigravityBaseDir = process.env.PI_ANTIGRAVITY_PLUGINS_DIR || path.join(os.homedir(), '.gemini/config/plugins');
+const opencodeDir = opencodeConfigDir(process.env);
 const clients = {
   codex: resolve('codex'),
   claude: resolve('claude'),
   antigravity: resolve('agy') || (fs.existsSync(path.dirname(antigravityBaseDir)) || process.env.PI_ANTIGRAVITY_PLUGINS_DIR || target === 'antigravity' ? 'plugin-dir' : ''),
+  opencode: resolve('opencode') || (process.env.OPENCODE_CONFIG_DIR || process.env.OPENCODE_CONFIG || (target === 'opencode' && fs.existsSync(opencodeDir)) ? 'config-dir' : ''),
 };
 
-const selected = (target === 'all' ? ['codex', 'claude', 'antigravity'] : [target]).filter(client => {
+const selected = (target === 'all' ? ['codex', 'claude', 'antigravity', 'opencode'] : [target]).filter(client => {
   if (clients[client]) return true;
   if (target !== 'all') throw new Error(`${client} CLI was not found`);
   console.log(`Skipped ${client}: CLI not found.`);
@@ -191,6 +195,10 @@ const removeFrom = {
     backupPluginDir();
     fs.rmSync(pluginDir, { recursive: true, force: true });
   },
+  opencode: () => {
+    const result = uninstallOpencode({ opencodeBin: clients.opencode, name, backupDir: backup });
+    if (!result.removed) throw new Error('not installed');
+  },
 };
 
 if (remove) {
@@ -208,10 +216,11 @@ if (remove) {
   execFileSync(pi, ['--version'], { stdio: 'inherit' });
   if (!path.isAbsolute(pi)) throw new Error('pi must resolve to an absolute executable path');
   const agyPath = resolve('agy');
+  const opencodePath = clients.opencode && clients.opencode !== 'config-dir' ? clients.opencode : '';
   const binDirs = [
     path.dirname(process.execPath),
     path.dirname(pi),
-    ...[clients.codex, clients.claude, agyPath].filter(Boolean).filter(p => path.isAbsolute(p)).map(path.dirname),
+    ...[clients.codex, clients.claude, agyPath, opencodePath].filter(Boolean).filter(p => path.isAbsolute(p)).map(path.dirname),
     '/usr/bin', '/bin', '/usr/sbin', '/sbin',
   ];
   const executablePath = [...new Set(binDirs)].join(path.delimiter);
@@ -223,6 +232,11 @@ if (remove) {
       console.log(`Installed ${name} Antigravity plugin at ${pluginDir}.`);
       continue;
     }
+    if (client === 'opencode') {
+      const res = installOpencode({ opencodeBin: clients.opencode, name, command, env, backupDir: backup });
+      console.log(`Installed ${name} for opencode at ${res.configFile} (skill: ${res.skillFile}).`);
+      continue;
+    }
     try { removeFrom[client](); }
     catch (error) { if (error?.status == null && error?.code !== 'ENOENT') throw error; }
     if (client === 'codex') {
@@ -232,5 +246,5 @@ if (remove) {
     }
     console.log(`Installed ${name} for ${client}.`);
   }
-  console.log('Running sessions keep their current bridge; open a new Codex/Claude Code/Antigravity session to load this version. Other MCP entries were preserved.');
+  console.log('Running sessions keep their current bridge; open a new Codex/Claude Code/Antigravity/OpenCode session to load this version. Other MCP entries were preserved.');
 }

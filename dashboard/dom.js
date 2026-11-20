@@ -73,7 +73,7 @@ export const commTypes = new Set(['instruction', 'message', 'question', 'answer'
 export const badTypes = new Set(['process_failed', 'control_failed', 'extension_error', 'instruction_failed', 'interrupted', 'budget_limit']);
 export const lifeTypes = new Set(['ready', 'started', 'settled', 'resumed', 'interrupted', 'closed', 'model_changed', 'model_restored', 'process_failed', 'control_failed', 'extension_error', 'instruction_failed', 'budget_limit']);
 export const notifyOn = { waiting: '在等待答复', failed: '执行失败', completed: '已完成', disconnected: '控制进程离线' };
-export const kindNames = { antigravity: 'AGY', claude: 'Claude', codex: 'Codex' };
+export const kindNames = { antigravity: 'AGY', claude: 'Claude', codex: 'Codex', opencode: 'OpenCode' };
 
 export const store = {
   get(key, fallback) {
@@ -249,12 +249,13 @@ export function safeHref(raw) {
 }
 
 export function agentSessionId(agent) {
-  return agent?.parentInfo?.sessionId || agent?.callback?.antigravitySessionId || agent?.callback?.claudeSessionId || agent?.callback?.codexThreadId || null;
+  return agent?.parentInfo?.sessionId || agent?.callback?.antigravitySessionId || agent?.callback?.opencodeSessionId || agent?.callback?.claudeSessionId || agent?.callback?.codexThreadId || null;
 }
 
 export function agentHost(agent) {
   const kind = (agent?.parentInfo?.kind || agent?.callback?.host || '').toLowerCase();
   if (kind.includes('antigravity') || agent?.callback?.antigravitySessionId) return 'antigravity';
+  if (kind.includes('opencode') || agent?.callback?.opencodeSessionId) return 'opencode';
   if (kind.includes('claude') || agent?.callback?.claudeSessionId) return 'claude';
   if (kind.includes('codex') || agent?.callback?.codexThreadId) return 'codex';
   return 'other';
@@ -262,6 +263,7 @@ export function agentHost(agent) {
 
 export function hostMeta(host) {
   if (host === 'antigravity') return { id: 'antigravity', label: 'Antigravity', short: 'AGY', cls: 'host-agy' };
+  if (host === 'opencode') return { id: 'opencode', label: 'OpenCode', short: 'OpenCode', cls: 'host-opencode' };
   if (host === 'claude') return { id: 'claude', label: 'Claude', short: 'Claude', cls: 'host-claude' };
   if (host === 'codex') return { id: 'codex', label: 'Codex', short: 'Codex', cls: 'host-codex' };
   return { id: 'other', label: '会话', short: '', cls: 'host-other' };
