@@ -18,9 +18,16 @@ if (args.some(arg => arg !== '--remove' && !arg.startsWith('--target=')) || !['a
   throw new Error('Usage: install.js [--target=all|codex|claude|antigravity|opencode] [--remove]');
 }
 
+function resolveShell() {
+  const candidates = [process.env.SHELL, '/bin/zsh', '/bin/bash', '/bin/sh'];
+  return candidates.find(candidate => candidate && fs.existsSync(candidate)) || '/bin/sh';
+}
+
 function resolve(command) {
   try {
-    return execFileSync('/bin/zsh', ['-lc', `command -v ${command}`], { encoding: 'utf8' }).trim();
+    const shell = resolveShell();
+    const flag = /\/(?:zsh|bash)$/.test(shell) ? '-lc' : '-c';
+    return execFileSync(shell, [flag, `command -v ${command}`], { encoding: 'utf8' }).trim();
   } catch (error) {
     if (error?.status == null && error?.code == null) throw error;
     for (const dir of (process.env.PATH || '').split(path.delimiter).filter(Boolean)) {

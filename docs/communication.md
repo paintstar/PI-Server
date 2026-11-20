@@ -25,7 +25,7 @@
 | `sandboxMode` | `strict`（或设置中心默认值） | 可选 `strict`、`dev`、`bypass`；单代理 `policy.sandboxMode` 优先于 `.agents/sandbox.json` |
 | `allowNetwork` | `true`（或设置中心默认值） | 控制子代理 shell 工具是否允许访问外网；设为 `false` 时在 Seatbelt 层拦截外部网络连接 |
 
-### macOS Seatbelt 三档路径边界
+### macOS Seatbelt / Linux & WSL2 Bubblewrap 三档路径边界
 
 所有新启动的 Pi 会话只加载内置通信扩展（`extensions/communication.ts`）与权限扩展（`extensions/policy.ts`），权限扩展未完成握手确认前不会下发任何任务：
 

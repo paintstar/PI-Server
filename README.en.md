@@ -8,7 +8,7 @@
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License" /></a>
     <img src="https://img.shields.io/badge/Node.js-%3E%3D22.19-339933?logo=nodedotjs&logoColor=white" alt="Node >= 22.19" />
     <img src="https://img.shields.io/badge/MCP_SDK-1.26.0_(24_Tools)-e27448" alt="MCP SDK 1.26.0" />
-    <img src="https://img.shields.io/badge/Sandbox-macOS_Seatbelt-171614?logo=apple&logoColor=white" alt="macOS Seatbelt" />
+    <img src="https://img.shields.io/badge/Sandbox-Seatbelt_%7C_Bubblewrap-171614" alt="macOS Seatbelt / Linux Bubblewrap" />
   </p>
 
   <p>
@@ -99,7 +99,7 @@ Configure providers, sync local Codex OAuth tokens, adjust context windows, and 
 
 ### Prerequisites
 
-- **OS**: macOS (tool sandboxing relies on `/usr/bin/sandbox-exec`)
+- **OS**: macOS (built-in `/usr/bin/sandbox-exec`) or Linux / Windows WSL2 (`sudo apt-get install -y bubblewrap`)
 - **Node.js**: `>= 22.19.0`
 - **Pi CLI**: `>= 1.0.2` (installed on `PATH` with at least one authenticated model provider)
 - **Host Client**: Google Antigravity, Claude Code, OpenAI Codex, or OpenCode

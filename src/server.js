@@ -22,6 +22,7 @@ import { dashboardInfo, ensureDashboard } from './dashboard-launcher.js';
 import { spawnReminder, waitReminder, waitCommandFor, sessionIdPattern } from './wait-reminder.js';
 import { buildSettingsPayload, enrichModels, filterModelProfiles } from './model-settings.js';
 import { inspectOpencodeConfig } from './opencode-config.js';
+import { sandboxHealth } from './tool-sandbox.js';
 
 const execFileAsync = promisify(execFile);
 const projectRoot = fileURLToPath(new URL('..', import.meta.url));
@@ -67,12 +68,14 @@ async function collectHealth(manager, callbacks, managerOptions) {
   catch (error) { modelsError = error.message; }
   const pluginDir = path.join(process.env.PI_ANTIGRAVITY_PLUGINS_DIR || path.join(os.homedir(), '.gemini/config/plugins'), 'pi-subagents');
   const opencode = inspectOpencodeConfig();
+  const sandbox = sandboxHealth();
   return {
     ok: Boolean(pi.ok && controller.ok),
     host: callbacks.host(),
     pi,
     controller,
-    sandboxExec: process.platform === 'darwin' ? fs.existsSync('/usr/bin/sandbox-exec') : null,
+    sandbox,
+    sandboxExec: process.platform === 'darwin' ? sandbox.ok : null,
     modelsCount,
     ...(modelsError ? { modelsError } : {}),
     dashboardUrl: dashboardInfo(manager.storage.root)?.url || null,

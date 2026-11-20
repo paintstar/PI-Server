@@ -4,7 +4,7 @@
 面向 Google Antigravity、Claude Code、OpenAI Codex 和 OpenCode 的多模型子代理调度平台，包含标准 stdio MCP 服务与实时本机控制台“Pi 调度台”。每个子代理会话由独立进程持久化托管，支持工作树隔离、双向消息、阻塞提问、断线恢复、临时模型切换、四端回调唤醒、模型能力画像配置与只读改动审查。
 
 ## 怎么运行
-- 环境要求：macOS（沙箱依赖 `/usr/bin/sandbox-exec`）、Node.js 22.19+、本机 Pi CLI 1.0.2+ 及有效模型凭据。
+- 环境要求：macOS（沙箱依赖 `/usr/bin/sandbox-exec`）或 Linux / Windows WSL2（沙箱依赖 `bubblewrap` / `bwrap`）、Node.js 22.19+、本机 Pi CLI 1.0.2+ 及有效模型凭据。
 - `npm ci --ignore-scripts` 安装固定依赖；`npm start` 启动 stdio MCP 服务。
 - `npm run check` 检查全部 JS / TS 语法；`npm test` 运行全量隔离测试（不调用真实付费模型）。
 - `npm run install:all` 一键接入本机 Antigravity、Claude Code、Codex 和 OpenCode（也可单独执行 `install:antigravity`、`install:claude`、`install:codex`、`install:opencode`）；只更新客户端配置，不中断正在运行的子代理。

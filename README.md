@@ -8,7 +8,7 @@
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License" /></a>
     <img src="https://img.shields.io/badge/Node.js-%3E%3D22.19-339933?logo=nodedotjs&logoColor=white" alt="Node >= 22.19" />
     <img src="https://img.shields.io/badge/MCP_SDK-1.26.0_(24_Tools)-e27448" alt="MCP SDK 1.26.0" />
-    <img src="https://img.shields.io/badge/Sandbox-macOS_Seatbelt-171614?logo=apple&logoColor=white" alt="macOS Seatbelt" />
+    <img src="https://img.shields.io/badge/Sandbox-Seatbelt_%7C_Bubblewrap-171614" alt="macOS Seatbelt / Linux Bubblewrap" />
   </p>
 
   <p>
@@ -31,7 +31,7 @@
 - **可靠双向通信与阻塞式提问**：子代理可通过 `agent_message` 汇报阶段进展或与同组兄弟代理协作，遇到需求歧义时调用 `ask_parent` 原地暂停等待；主会话调用 `reply_question` 明确答复后子代理立即继续执行，支持幂等 `requestId` / `messageId` 防重放。
 - **实时三栏控制台“Pi 调度台”**：按宿主父会话自动分组，中间区域支持逐字流式推理与折叠式工具执行回放，右侧检查器提供会话概况、输出速度（`tok/s`）、上下文窗口水位与只读 Git 工作树内联差异（Diff），并与 `organize_agents` 工具实时同步自定义标题、备注、置顶与归档状态。
 - **模型能力画像与脱敏设置中心**：提供 `get_model_profiles` 工具与面板左下角设置中心，集中维护各服务商启停、脱敏 API Key、本机 Codex OAuth 一键导入、自定义上下文窗口（支持设为 1M 上下文并同步写回 `models.json`）、推荐思考强度与中文能力描述，让主代理在派活前有据可依。
-- **macOS Seatbelt 内核级三档沙箱**：通过 `/usr/bin/sandbox-exec` 约束工具与后代 shell 进程，默认在 Git 仓库分配独立 `worktree` 分支并在共享目录下强制校验不重叠的 `ownedPaths`；默认屏蔽 `~/.pi`、`~/.codex`、`~/.ssh`、`~/.config/opencode` 与 `~/.local/share/opencode` 等凭据目录，防止密钥外泄。
+- **内核级三档沙箱（macOS Seatbelt / Linux & WSL2 `bubblewrap`）**：在 macOS 上通过 `/usr/bin/sandbox-exec`、在 Linux 与 Windows WSL2 上通过 `bwrap` 约束工具与后代 shell 进程，默认在 Git 仓库分配独立 `worktree` 分支并在共享目录下强制校验不重叠的 `ownedPaths`；默认屏蔽 `~/.pi`、`~/.codex`、`~/.ssh`、`~/.config/opencode` 与 `~/.local/share/opencode` 等凭据目录，防止密钥外泄。
 - **多渠道套餐额度只读查询**：内置 `get_quota` 工具，在内存中只读使用本机 Pi 凭据查询 Codex、智谱 GLM / Z.ai、MiniMax Token Plan、DeepSeek 与 OpenCode Go 的周期剩余比例或账户余额，不改写凭据文件，也不暴露账号身份。
 
 ## 系统架构
@@ -102,7 +102,9 @@ flowchart LR
 
 ### 环境要求
 
-- **操作系统**：macOS（沙箱执行依赖系统内置的 `/usr/bin/sandbox-exec`）
+- **操作系统**：
+  - **macOS**（使用系统内置 `/usr/bin/sandbox-exec`）
+  - **Linux / Windows WSL2**（需安装 `bubblewrap`：`sudo apt-get install -y bubblewrap`）
 - **Node.js**：`>= 22.19.0`
 - **Pi CLI**：`>= 1.0.2`（需提前在终端完成 `pi` 安装及至少一个模型渠道登录）
 - **宿主工具**：Google Antigravity、Claude Code、OpenAI Codex 或 OpenCode 任一即可
@@ -242,7 +244,7 @@ MCP 协议本身不保证在主代理结束一轮回复后重新唤醒模型，�
 ## 能力边界说明
 
 - **费用与授权边界**：子代理的 `usage.reportedCost` 根据模型目录静态单价估算，自定义渠道可能显示为 `0`，不能替代服务商真实账单；`get_quota` 返回套餐有剩余额度也不等于用户已授权消费，主代理在扩大付费模型调用范围前仍须征得用户同意。
-- **平台与验收边界**：进程级工具隔离依赖 macOS Seatbelt，非 macOS 平台运行受限子代理会安全报错退出；子代理状态变为 `completed` 仅代表该回合模型停止输出，代码正确性仍需主代理结合 `get_agent_changes` 与测试命令独立验收。
+- **平台与验收边界**：进程级工具隔离依赖 macOS Seatbelt 或 Linux/WSL2 `bubblewrap`（原生 Windows 建议在 WSL2 中运行；未受支持平台会安全报错退出）；子代理状态变为 `completed` 仅代表该回合模型停止输出，代码正确性仍需主代理结合 `get_agent_changes` 与测试命令独立验收。
 
 ## 深入文档与治理
 

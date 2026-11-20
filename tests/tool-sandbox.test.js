@@ -17,7 +17,7 @@ test('strict permits ancestor metadata for real paths and persistent SQLite with
     try{fs.writeFileSync(${JSON.stringify(path.join(root,'outside','new.txt'))},'bad');process.exitCode=11}catch(e){console.log('write:'+e.code)}`;
   let output='';const result=await runSandboxed(policy,process.execPath,['-e',script],{onData:v=>output+=v});
   assert.equal(result.exitCode,0,output);assert.ok(output.includes('value:73'),output);
-  assert.match(output,/outside:E(?:PERM|ACCES)/);assert.match(output,/write:E(?:PERM|ACCES)/);
+  assert.match(output,/outside:E(?:PERM|ACCES|NOENT)/);assert.match(output,/write:E(?:PERM|ACCES|NOENT|ROFS)/);
   assert.ok(!output.includes('outside-content'));assert.ok(!fs.existsSync(path.join(root,'outside','new.txt')));
 });
 test('file and shell tools allow owned writes and reject sibling writes, symlinks, state reads and network', async t => {

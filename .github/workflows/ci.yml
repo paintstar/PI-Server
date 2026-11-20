@@ -14,8 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  syntax:
-    name: Syntax & Hygiene (Linux)
+  test-linux:
+    name: Full Test & Bubblewrap Sandbox Suite (Linux / WSL2)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,8 +23,11 @@ jobs:
         with:
           node-version: "22.22.0"
           cache: npm
+      - name: Install bubblewrap
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
       - run: npm ci --ignore-scripts
       - run: npm run check
+      - run: npm test
 
   test-macos:
     name: Full Test & Seatbelt Sandbox Suite (macOS)

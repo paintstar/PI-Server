@@ -3,6 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { buildBwrapArgs, isWsl, resolveBwrap } from './linux-sandbox.js';
 
 const inside = (target, directory) => target === directory || target.startsWith(directory + path.sep);
 /** Resolve existing ancestors before checking a path, including new files under symlinked directories. */
@@ -40,9 +41,31 @@ export function assertToolPath(value, policy, write = false) {
   if (mode !== 'bypass') for (const directory of privateHome()) if (inside(target, directory)) throw new Error('Tool cannot read private credentials');
   return target;
 }
+export function sandboxHealth(platform = process.platform, env = process.env) {
+  if (platform === 'darwin') {
+    const ok = fs.existsSync('/usr/bin/sandbox-exec');
+    return { backend: 'seatbelt', ok, executable: ok ? '/usr/bin/sandbox-exec' : null, platform };
+  }
+  if (platform === 'linux') {
+    const executable = resolveBwrap(env);
+    return { backend: 'bwrap', ok: Boolean(executable), executable: executable || null, platform, wsl: isWsl(undefined, env) };
+  }
+  return { backend: 'unsupported', ok: false, executable: null, platform };
+}
 const filter = value => `(subpath ${JSON.stringify(canonicalPath(value))})`;
 export function sandboxProfile(policy) {
-  if (process.platform !== 'darwin' || !fs.existsSync('/usr/bin/sandbox-exec')) throw new Error('Strict tool sandbox requires macOS sandbox-exec; unsupported platforms fail closed.');
+  if (process.platform === 'linux') {
+    const bwrap = resolveBwrap();
+    if (!bwrap) throw new Error('Tool sandbox on Linux/WSL2 requires bubblewrap (bwrap); install with: sudo apt-get install -y bubblewrap');
+    const mode = sandboxMode(policy);
+    return buildBwrapArgs(policy, '/bin/true', [], {
+      canonicalPath,
+      mode,
+      privateDirectories: privateHome(),
+      gitCommonDir: gitCommonDir(policy.cwd),
+    });
+  }
+  if (process.platform !== 'darwin' || !fs.existsSync('/usr/bin/sandbox-exec')) throw new Error('Strict tool sandbox requires macOS sandbox-exec or Linux/WSL2 bubblewrap (bwrap); unsupported platforms fail closed.');
   const mode = sandboxMode(policy);
   if (mode !== 'strict') return developmentProfile(policy, mode === 'bypass');
   const read = [policy.cwd, policy.tempDir, path.dirname(path.dirname(process.execPath)), '/usr', '/bin', '/sbin', '/System', '/Library', '/private/etc', '/private/var/db', '/dev', ...(fs.existsSync('/opt/homebrew') ? ['/opt/homebrew'] : [])];
@@ -77,12 +100,35 @@ ${policy.allowNetwork ? '' : '(deny network*) (allow network* (remote ip "localh
 const children = new Set(); let cleanupInstalled = false;
 function terminateChildren() { for (const pid of children) { try { process.kill(-pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') process.stderr.write(`Tool shutdown failed: ${error.message}\n`); } } }
 export function runSandboxed(policy, executable, args, { signal, timeout = 60000, onData = () => {}, onStdout, onStderr, input } = {}) {
-  const profile = sandboxProfile(policy);
+  let command;
+  let commandArgs;
+  if (process.platform === 'linux') {
+    const bwrap = resolveBwrap();
+    if (!bwrap) throw new Error('Tool sandbox on Linux/WSL2 requires bubblewrap (bwrap); install with: sudo apt-get install -y bubblewrap');
+    command = bwrap;
+    commandArgs = buildBwrapArgs(policy, executable, args, {
+      canonicalPath,
+      mode: sandboxMode(policy),
+      privateDirectories: privateHome(),
+      gitCommonDir: gitCommonDir(policy.cwd),
+    });
+  } else {
+    const profile = sandboxProfile(policy);
+    command = '/usr/bin/sandbox-exec';
+    commandArgs = ['-p', profile, executable, ...args];
+  }
   if (!cleanupInstalled) { cleanupInstalled = true; process.once('exit', terminateChildren); process.once('SIGTERM', () => { terminateChildren(); process.exit(143); }); }
   const env = { PATH: process.env.PATH, LANG: process.env.LANG || 'en_US.UTF-8', TMPDIR: policy.tempDir };
-  if (sandboxMode(policy) !== 'strict') Object.assign(env, { HOME: os.homedir(), PATH: [path.join(os.homedir(), '.local/bin'), '/Library/Developer/CommandLineTools/usr/bin', '/opt/homebrew/bin', process.env.PATH].join(':') });
+  if (sandboxMode(policy) !== 'strict') {
+    const extraPath = [
+      path.join(os.homedir(), '.local/bin'),
+      ...(process.platform === 'darwin' ? ['/Library/Developer/CommandLineTools/usr/bin', '/opt/homebrew/bin'] : ['/usr/local/bin']),
+      process.env.PATH,
+    ].filter(Boolean);
+    Object.assign(env, { HOME: os.homedir(), PATH: extraPath.join(path.delimiter) });
+  }
   return new Promise((resolve, reject) => {
-    const child = spawn('/usr/bin/sandbox-exec', ['-p', profile, executable, ...args], { cwd: policy.cwd, env, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(command, commandArgs, { cwd: policy.cwd, env, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
     children.add(child.pid);
     const stop = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') reject(error); } };
     const timer = setTimeout(stop, timeout); signal?.addEventListener('abort', stop, { once: true });
@@ -103,6 +149,13 @@ else if(operation==='access') fs.accessSync(file);
 else {let value='';process.stdin.setEncoding('utf8');process.stdin.on('data',c=>value+=c);process.stdin.on('end',()=>{fs.mkdirSync(require('path').dirname(file),{recursive:true});fs.writeFileSync(file,value)});}`;
 export async function fileOperation(policy, operation, filename, content, options = {}) {
   const file = assertToolPath(filename, policy, operation === 'write');
+  if (process.platform === 'linux' && operation === 'write' && sandboxMode(policy) === 'strict') {
+    const parent = path.dirname(file);
+    const owned = policy.ownedPaths.map(value => canonicalPath(path.resolve(policy.cwd, value)));
+    if (owned.some(dir => inside(parent, dir)) && !fs.existsSync(parent)) {
+      fs.mkdirSync(parent, { recursive: true });
+    }
+  }
   const stdout = [];
   const stderr = [];
   const workerArgs = ['--no-warnings', '-e', worker, operation, file];
