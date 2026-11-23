@@ -1,5 +1,5 @@
 {
-  "name": "pi-subagents",
+  "name": "pi-server",
   "version": "1.7.0",
   "license": "MIT",
   "type": "module",

@@ -1,10 +1,10 @@
 # 安全说明与漏洞上报
 
-本文档说明 Pi Subagents 的本机安全边界、凭据保护机制与安全漏洞私密上报方式。
+本文档说明 Pi Server 的本机安全边界、凭据保护机制与安全漏洞私密上报方式。
 
 ## 安全边界设计
 
-Pi Subagents 只面向单机本地开发环境运行，通过以下四层边界隔离模型工具调用与外部访问：
+Pi Server 只面向单机本地开发环境运行，通过以下四层边界隔离模型工具调用与外部访问：
 
 1. **进程级操作系统沙箱（macOS Seatbelt `/usr/bin/sandbox-exec` / Linux & WSL2 `bubblewrap`）**：默认 `strict` 档位下，子代理的文件读写与 shell 子进程受操作系统内核规则约束，只能写入声明的 `ownedPaths` 与私有临时目录；不支持沙箱后端的平台默认拒绝启动受限子代理（fail-closed）。
 2. **凭据零继承与脱敏展示**：模型 API Key 与 OAuth 令牌只由受信任的 Pi 主进程读取，不会注入子代理的 shell 环境变量；`strict` 与 `dev` 模式下均禁止子代理读写 `~/.pi`、`~/.codex`、`~/.ssh`、`~/.config/opencode`、`~/.local/share/opencode` 及管理进程状态目录。Web 调度台与全部 MCP 工具只返回脱敏后的凭据状态（例如 `sk-••••8821`），写 `~/.pi/agent/auth.json` 和 `models.json` 前先以 `0600` 权限原子备份。

@@ -1,5 +1,5 @@
 blank_issues_enabled: true
 contact_links:
   - name: 安全漏洞私密上报 (Security Advisory)
-    url: https://github.com/mumuxsy/pi-subagents/security/advisories/new
+    url: https://github.com/paintstar/PI-Server/security/advisories/new
     about: 涉及沙箱绕过、本机鉴权或凭据脱敏的安全问题请勿公开提 Issue，请通过私密通道提交。

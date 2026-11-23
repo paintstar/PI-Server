@@ -1,6 +1,6 @@
 <div align="center">
-  <img src="docs/assets/logo.svg" width="88" height="88" alt="Pi Subagents Logo" />
-  <h1>Pi Subagents · Pi 调度台</h1>
+  <img src="docs/assets/logo.svg" width="88" height="88" alt="Pi Server Logo" />
+  <h1>Pi Server · Pi 调度台</h1>
   <p><strong>面向 Google Antigravity、Claude Code、OpenAI Codex 与 OpenCode 的多模型子代理 MCP 调度平台与实时控制台</strong></p>
 
   <p>
@@ -22,7 +22,7 @@
 
 ---
 
-**Pi Subagents** 将本机 [Pi Coding Agent](https://pi.dev) 封装为通用的模型上下文协议（MCP）子代理调度中心，并内置零外部前端框架依赖的本机实时控制台 **Pi 调度台**（`http://127.0.0.1:3141/`）。主代理负责拆解任务、按模型画像选型与验收代码；各个子代理在独立的 Git 工作树与操作系统级沙箱中并行执行开发、审查或排错任务，支持断线保活、阻塞提问与跨宿主自动唤醒。
+**Pi Server** 将本机 [Pi Coding Agent](https://pi.dev) 封装为通用的模型上下文协议（MCP）子代理调度中心，并内置零外部前端框架依赖的本机实时控制台 **Pi 调度台**（`http://127.0.0.1:3141/`）。主代理负责拆解任务、按模型画像选型与验收代码；各个子代理在独立的 Git 工作树与操作系统级沙箱中并行执行开发、审查或排错任务，支持断线保活、阻塞提问与跨宿主自动唤醒。
 
 ## 核心特性
 
@@ -127,7 +127,7 @@ npm run install:all
 也可以按需单独安装或卸载某一端（安装前会自动把原客户端配置以 `0600` 权限备份至 `.agents/records/config-backups/`，卸载不会删除源码、Pi 凭据或历史会话）：
 
 ```bash
-npm run install:antigravity   # 生成并严格校验 ~/.gemini/config/plugins/pi-subagents 插件包
+npm run install:antigravity   # 生成并严格校验 ~/.gemini/config/plugins/pi-server 插件包
 npm run install:claude        # 写入 ~/.claude.json 用户级 MCP 配置
 npm run install:codex         # 写入 ~/.codex/config.toml 全局 MCP 配置
 npm run install:opencode      # 写入 ~/.config/opencode/opencode.jsonc 的 mcp.servers 并安装 Skill
@@ -151,20 +151,20 @@ npm run dashboard
 
 ## 四大宿主接入与回调唤醒
 
-MCP 协议本身不保证在主代理结束一轮回复后重新唤醒模型，因此 Pi Subagents 针对四大宿主分别提供了防漏等提醒（`mustWait`）与原生唤醒通道：
+MCP 协议本身不保证在主代理结束一轮回复后重新唤醒模型，因此 Pi Server 针对四大宿主分别提供了防漏等提醒（`mustWait`）与原生唤醒通道：
 
 | 宿主客户端 | 会话绑定方式 | 自动唤醒与防漏等机制 |
 | --- | --- | --- |
 | **Google Antigravity** | `spawn_agent` 传入 `antigravitySessionId`（当前会话 ID），或调用 `bind_session` | 插件内置 `PreInvocation` 与 `Stop` 钩子自动注入未读事件并拦截未挂监听器的过早收尾；同时可运行返回结果中的 `mustWait.antigravityBackgroundCommand`（`node scripts/wait-events.js --session <id>`）后台监听即时唤醒，全部通道共用单调游标去重。 |
-| **Claude Code** | 自动识别 `CLAUDE_CODE_SESSION_ID` 并在面板分组 | 以开发通道启动（`claude --dangerously-load-development-channels server:pi-subagents`）时直接推送 `notifications/claude/channel`；普通模式下将 `npm run wait-events -- --agent <id>` 放到后台运行即可在事件到达时唤醒主会话。 |
+| **Claude Code** | 自动识别 `CLAUDE_CODE_SESSION_ID` 并在面板分组 | 以开发通道启动（`claude --dangerously-load-development-channels server:pi-server`）时直接推送 `notifications/claude/channel`；普通模式下将 `npm run wait-events -- --agent <id>` 放到后台运行即可在事件到达时唤醒主会话。 |
 | **OpenAI Codex** | 在 shell 读取 `echo $CODEX_THREAD_ID`，传入 `callback.codexThreadId` | 子代理完成、提问、失败或触及策略上限时，桥接进程自动执行 `codex queue --thread <id> --message ...` 将通知排入对应会话队列。 |
-| **OpenCode** | `spawn_agent` 传入 `opencodeSessionId`（或 `parentSession: { kind: "opencode", sessionId }`），或调用 `bind_session(kind="opencode")` | 自动识别 `opencode` MCP 客户端并安装 `~/.config/opencode/skills/pi-subagents/SKILL.md`；支持 `wait_agent`、后台 `mustWait.opencodeBackgroundCommand`（`scripts/wait-events.js --session <id>`）以及可选 `callback.opencodeCliWake=true` 通过 `opencode run --session <id>` 唤醒会话，全通道共用单调游标去重。 |
+| **OpenCode** | `spawn_agent` 传入 `opencodeSessionId`（或 `parentSession: { kind: "opencode", sessionId }`），或调用 `bind_session(kind="opencode")` | 自动识别 `opencode` MCP 客户端并安装 `~/.config/opencode/skills/pi-server/SKILL.md`；支持 `wait_agent`、后台 `mustWait.opencodeBackgroundCommand`（`scripts/wait-events.js --session <id>`）以及可选 `callback.opencodeCliWake=true` 通过 `opencode run --session <id>` 唤醒会话，全通道共用单调游标去重。 |
 
 ### 对话调度示例
 
 在任意已接入的宿主聊天中输入：
 
-> 请先调用 `get_model_profiles` 查看当前启用的模型画像，再用 `pi-subagents` 启动两个独立子代理：一个用高推理模型审查 `src/order/` 的并发锁边界，另一个为 `src/payment/` 补充幂等回归测试。给两边声明不冲突的 `ownedPaths`，遇到子代理提问及时答复，等两边全部结束后用 `get_agent_changes` 检查实际改动并跑通测试。
+> 请先调用 `get_model_profiles` 查看当前启用的模型画像，再用 `pi-server` 启动两个独立子代理：一个用高推理模型审查 `src/order/` 的并发锁边界，另一个为 `src/payment/` 补充幂等回归测试。给两边声明不冲突的 `ownedPaths`，遇到子代理提问及时答复，等两边全部结束后用 `get_agent_changes` 检查实际改动并跑通测试。
 
 ## 24 个 MCP 工具全览
 
@@ -233,11 +233,11 @@ MCP 协议本身不保证在主代理结束一轮回复后重新唤醒模型，�
 
 | 环境变量 | 默认值 | 作用 |
 | --- | --- | --- |
-| `PI_SUBAGENTS_STATE_DIR` | `<仓库根目录>/.agents/runtime` | 指定会话、控制进程 Socket、工作树与配置的本机存储目录 |
+| `PI_SERVER_STATE_DIR` | `<仓库根目录>/.agents/runtime` | 指定会话、控制进程 Socket、工作树与配置的本机存储目录 |
 | `PI_DASHBOARD_PORT` | `3141` | 指定 Pi 调度台监听的本地端口（仅绑定 `127.0.0.1`） |
 | `PI_DASHBOARD_AUTO` | `1` | 设为 `0` 时禁止 MCP 服务启动时自动拉起 Web 调度台 |
-| `PI_SUBAGENTS_MAX_AGENTS` | `50` | 单个控制进程允许同时打开的最大 Pi 会话数（范围 `1`–`50`） |
-| `PI_SUBAGENTS_CONFIRM_POLICY` | `0` | 设为 `1` 时，调用 `update_agent_policy` 会在支持 Elicitation 的客户端弹出确认表单 |
+| `PI_SERVER_MAX_AGENTS` | `50` | 单个控制进程允许同时打开的最大 Pi 会话数（范围 `1`–`50`） |
+| `PI_SERVER_CONFIRM_POLICY` | `0` | 设为 `1` 时，调用 `update_agent_policy` 会在支持 Elicitation 的客户端弹出确认表单 |
 | `PI_EXECUTABLE` | 自动解析 `PATH` 中的 `pi` | 显式指定本机 Pi CLI 的绝对可执行路径 |
 | `PI_CODING_AGENT_DIR` | `~/.pi/agent` | 指定读取 Pi `auth.json` 与 `models.json` 的配置目录 |
 

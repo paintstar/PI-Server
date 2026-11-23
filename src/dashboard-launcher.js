@@ -124,7 +124,7 @@ export async function ensureDashboard(root = defaultStateRoot) {
     const child = spawn(process.execPath, [script], {
       detached: true,
       stdio: ['ignore', log, log],
-      env: { ...process.env, PI_SUBAGENTS_STATE_DIR: root },
+      env: { ...process.env, PI_SERVER_STATE_DIR: root },
     });
     fs.closeSync(log);
     child.on('error', error => { failure = error; });

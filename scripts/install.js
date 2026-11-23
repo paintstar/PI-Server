@@ -9,7 +9,7 @@ import { installOpencode, uninstallOpencode } from './opencode-install.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-const name = 'pi-subagents';
+const name = 'pi-server';
 const args = process.argv.slice(2);
 const remove = args.includes('--remove');
 const targetArg = args.find(arg => arg.startsWith('--target='));
@@ -91,9 +91,9 @@ const logoSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" f
 </svg>
 `;
 
-const pluginRules = `# Pi Subagents Rules for Antigravity
+const pluginRules = `# Pi Server Rules for Antigravity
 
-When delegating tasks to external models through \`pi-subagents\`, follow these rules:
+When delegating tasks to external models through \`pi-server\`, follow these rules:
 
 1. Handle the majority of coding, research, and execution tasks directly yourself unless delegation clearly adds value (major decisions, independent review, or user-requested subagent runs).
 2. Before spawning, check enabled models, context windows, capability descriptions, and Pi subagent tools via \`get_model_profiles\` or \`list_models\` (and \`get_subagent_health\` / \`get_quota\` if needed), and match each configured model's capability profile (for example, when \`openai-codex\` GPT models are enabled, prefer \`openai-codex/gpt-6-astra\` as a strict conservative brake on research and major architectural decisions due to tighter quota, and \`openai-codex/gpt-6.1-sol\` for lower-cost code review, debugging, or math/logic verification while explicitly instructing it to avoid defensive fallback code and redundant docs).
@@ -104,13 +104,13 @@ When delegating tasks to external models through \`pi-subagents\`, follow these 
 `;
 
 const pluginSkill = `---
-name: pi-subagents
+name: pi-server
 description: Orchestrate independent Pi subagents across external models in Antigravity with session binding, reactive wait-events wakeups, and lifecycle hooks.
 ---
 
-# Pi Subagents Workflow in Antigravity
+# Pi Server Workflow in Antigravity
 
-Handle routine coding and exploration directly as the main agent; invoke \`pi-subagents\` selectively when explicit delegation, independent review, or critical-decision calibration is beneficial.
+Handle routine coding and exploration directly as the main agent; invoke \`pi-server\` selectively when explicit delegation, independent review, or critical-decision calibration is beneficial.
 
 ## Session Binding & Model Selection
 
@@ -132,9 +132,9 @@ Handle routine coding and exploration directly as the main agent; invoke \`pi-su
 Before accepting changes from a settled child, call \`get_agent_changes\` (for worktree or shared owned diffs) and run target checks directly. Use \`organize_agents\` (shared live with the 3141 dashboard) to set readable session titles, attach summary notes, pin key runs, or archive finished sessions, and filter with \`list_agents({ archiveFilter: "active" })\`.
 `;
 
-const pluginReadme = `# Pi Subagents Antigravity Plugin
+const pluginReadme = `# Pi Server Antigravity Plugin
 
-Bundles the \`pi-subagents\` MCP server, Antigravity \`PreInvocation\` and \`Stop\` lifecycle hooks, session-binding rules, and orchestration skill.
+Bundles the \`pi-server\` MCP server, Antigravity \`PreInvocation\` and \`Stop\` lifecycle hooks, session-binding rules, and orchestration skill.
 
 - Repository root: \`${root}\`
 - Web dashboard default URL: \`http://127.0.0.1:3141/\`
@@ -144,7 +144,7 @@ function writeAntigravityPlugin(env) {
   backupPluginDir();
   fs.mkdirSync(path.join(pluginDir, 'assets'), { recursive: true, mode: 0o755 });
   fs.mkdirSync(path.join(pluginDir, 'rules'), { recursive: true, mode: 0o755 });
-  fs.mkdirSync(path.join(pluginDir, 'skills/pi-subagents'), { recursive: true, mode: 0o755 });
+  fs.mkdirSync(path.join(pluginDir, 'skills/pi-server'), { recursive: true, mode: 0o755 });
 
   const agyBin = resolve('agy');
   const mcpEnv = { ...env, ...(agyBin ? { AGY_EXECUTABLE: agyBin } : {}) };
@@ -153,8 +153,8 @@ function writeAntigravityPlugin(env) {
   const hookCommand = `"${process.execPath}" "${hookScript}"`;
 
   atomicWriteJson(path.join(pluginDir, 'plugin.json'), {
-    name: 'pi-subagents',
-    displayName: 'Pi Subagents',
+    name: 'pi-server',
+    displayName: 'Pi Server',
     version: pkg.version,
     description: 'Multi-model Pi subagent orchestration for Antigravity with session binding, reactive wait-events watcher, and PreInvocation/Stop hooks.',
     logo: 'assets/logo.svg',
@@ -169,7 +169,7 @@ function writeAntigravityPlugin(env) {
 
   atomicWriteJson(path.join(pluginDir, 'mcp_config.json'), {
     mcpServers: {
-      'pi-subagents': {
+      'pi-server': {
         command: process.execPath,
         args: [serverScript],
         env: mcpEnv,
@@ -178,14 +178,14 @@ function writeAntigravityPlugin(env) {
   }, { pretty: true });
 
   atomicWriteJson(path.join(pluginDir, 'hooks.json'), {
-    'pi-subagents-callbacks': {
+    'pi-server-callbacks': {
       PreInvocation: [{ type: 'command', command: hookCommand, timeout: 10 }],
       Stop: [{ type: 'command', command: hookCommand, timeout: 10 }],
     },
   }, { pretty: true });
 
   fs.writeFileSync(path.join(pluginDir, 'rules/AGENTS.md'), pluginRules);
-  fs.writeFileSync(path.join(pluginDir, 'skills/pi-subagents/SKILL.md'), pluginSkill);
+  fs.writeFileSync(path.join(pluginDir, 'skills/pi-server/SKILL.md'), pluginSkill);
   fs.writeFileSync(path.join(pluginDir, 'assets/logo.svg'), logoSvg);
   fs.writeFileSync(path.join(pluginDir, 'README.md'), pluginReadme);
 

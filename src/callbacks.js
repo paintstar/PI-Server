@@ -119,7 +119,7 @@ export function scanAgentEvents(storage, agentId, { afterSequence = 0, eventType
 }
 
 export function callbackText(event) {
-  const head = `[pi-subagents callback] agent ${event.agentId} event=${event.type} sequence=${event.sequence}`;
+  const head = `[pi-server callback] agent ${event.agentId} event=${event.type} sequence=${event.sequence}`;
   const next = `Continue with wait_agent(agentIds=["${event.agentId}"], after={"${event.agentId}": ${event.sequence}}) or read_agent.`;
   if (event.type === 'question') return `${head}\nBlocking question ${event.questionId}:\n${String(event.question).slice(0, 4000)}\nAnswer with reply_question(questionId="${event.questionId}").`;
   if (event.type === 'settled') return `${head} status=${event.status}${event.error ? `\nError: ${String(event.error).slice(0, 1000)}` : ''}\nLast reply (verify actual changes before accepting):\n${String(event.text || '').slice(-3000)}\n${next}`;
@@ -173,7 +173,7 @@ export class Callbacks {
     if (/claude/i.test(name)) return 'claude';
     if (/opencode/i.test(name)) return 'opencode';
     if (/antigravity|agy|gemini/i.test(name) || process.env.ANTIGRAVITY_CONVERSATION_ID || process.env.ANTIGRAVITY_AGENT) return 'antigravity';
-    if (process.env.OPENCODE_SESSION_ID || process.env.OPENCODE || process.env.PI_SUBAGENTS_HOST === 'opencode') return 'opencode';
+    if (process.env.OPENCODE_SESSION_ID || process.env.OPENCODE || process.env.PI_SERVER_HOST === 'opencode') return 'opencode';
     return 'other';
   }
   routes(config) {

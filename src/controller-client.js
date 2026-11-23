@@ -27,7 +27,7 @@ export function parentIdentity(env = process.env, clientName = '') {
     : /codex/i.test(clientName) ? 'codex'
       : /claude/i.test(clientName) ? 'claude'
         : /antigravity|agy/i.test(clientName) ? 'antigravity' : '';
-  const fromHint = ['antigravity', 'codex', 'claude', 'opencode'].includes(env.PI_SUBAGENTS_HOST) ? env.PI_SUBAGENTS_HOST : '';
+  const fromHint = ['antigravity', 'codex', 'claude', 'opencode'].includes(env.PI_SERVER_HOST) ? env.PI_SERVER_HOST : '';
   const kind = fromClient || fromHint
     || (env.CODEX_THREAD_ID ? 'codex'
       : (env.ANTIGRAVITY_CONVERSATION_ID || env.ANTIGRAVITY_AGENT || env.ANTIGRAVITY_PROJECT_ID) ? 'antigravity'
@@ -158,7 +158,7 @@ export async function connectController({ root, executable = 'pi', maxAgents = d
   let info = await probe(root, piAgentDir);
   if (!info) {
     const log = fs.openSync(path.join(root, 'controller.log'), 'a', 0o600);
-    const env = { ...process.env, PI_SUBAGENTS_STATE_DIR: root, PI_EXECUTABLE: executable, PI_SUBAGENTS_MAX_AGENTS: String(maxAgents) };
+    const env = { ...process.env, PI_SERVER_STATE_DIR: root, PI_EXECUTABLE: executable, PI_SERVER_MAX_AGENTS: String(maxAgents) };
     if (piAgentDir) env.PI_CODING_AGENT_DIR = piAgentDir;
     const child = spawn(process.execPath, [script], { detached: true, stdio: ['ignore', log, log], env });
     fs.closeSync(log); child.unref(); let failure; child.on('error', error => { failure = error; });

@@ -21,7 +21,7 @@ function runHook(input, stateDir, extraEnv = {}) {
   const stdout = execFileSync(process.execPath, [hookScript], {
     input: JSON.stringify(input),
     encoding: 'utf8',
-    env: { ...process.env, PI_SUBAGENTS_STATE_DIR: stateDir, PI_HOOK_STOP_WAIT_MS: '120', ...extraEnv },
+    env: { ...process.env, PI_SERVER_STATE_DIR: stateDir, PI_HOOK_STOP_WAIT_MS: '120', ...extraEnv },
   });
   return JSON.parse(stdout);
 }
@@ -101,7 +101,7 @@ test('wait-events --session wakes on event, advances cursor and cleans watcher h
   cb.configure(agent.id, { antigravitySessionId: 'conv-watch' }, 0);
 
   const child = spawnChild(process.execPath, [waitScript, '--session', 'conv-watch', '--events', 'settled', '--timeout', '5'], {
-    env: { ...process.env, PI_SUBAGENTS_STATE_DIR: manager.storage.root },
+    env: { ...process.env, PI_SERVER_STATE_DIR: manager.storage.root },
     encoding: 'utf8',
   });
   let output = '';
@@ -202,17 +202,17 @@ test('install.js builds and removes Antigravity plugin bundle cleanly', t => {
   const env = { ...process.env, PI_ANTIGRAVITY_PLUGINS_DIR: pluginsDir, PI_CONFIG_BACKUP_DIR: backupDir, PI_EXECUTABLE: process.execPath };
   execFileSync(process.execPath, [installScript, '--target=antigravity'], { env, encoding: 'utf8' });
 
-  const pluginRoot = path.join(pluginsDir, 'pi-subagents');
+  const pluginRoot = path.join(pluginsDir, 'pi-server');
   const manifest = JSON.parse(fs.readFileSync(path.join(pluginRoot, 'plugin.json'), 'utf8'));
   const mcp = JSON.parse(fs.readFileSync(path.join(pluginRoot, 'mcp_config.json'), 'utf8'));
   const hooks = JSON.parse(fs.readFileSync(path.join(pluginRoot, 'hooks.json'), 'utf8'));
-  assert.equal(manifest.name, 'pi-subagents');
-  assert.equal(manifest.displayName, 'Pi Subagents');
-  assert.ok(mcp.mcpServers['pi-subagents'].args[0].endsWith(path.join('src', 'server.js')));
-  assert.equal(hooks['pi-subagents-callbacks'].PreInvocation.length, 1);
-  assert.equal(hooks['pi-subagents-callbacks'].Stop.length, 1);
+  assert.equal(manifest.name, 'pi-server');
+  assert.equal(manifest.displayName, 'Pi Server');
+  assert.ok(mcp.mcpServers['pi-server'].args[0].endsWith(path.join('src', 'server.js')));
+  assert.equal(hooks['pi-server-callbacks'].PreInvocation.length, 1);
+  assert.equal(hooks['pi-server-callbacks'].Stop.length, 1);
   assert.ok(fs.existsSync(path.join(pluginRoot, 'rules/AGENTS.md')));
-  assert.ok(fs.existsSync(path.join(pluginRoot, 'skills/pi-subagents/SKILL.md')));
+  assert.ok(fs.existsSync(path.join(pluginRoot, 'skills/pi-server/SKILL.md')));
   assert.ok(fs.existsSync(path.join(pluginRoot, 'assets/logo.svg')));
 
   execFileSync(process.execPath, [installScript, '--target=antigravity', '--remove'], { env, encoding: 'utf8' });

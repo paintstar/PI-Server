@@ -431,7 +431,7 @@ export async function startDashboard({
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === currentScript) {
-  const root = process.env.PI_SUBAGENTS_STATE_DIR || fileURLToPath(new URL('../.agents/runtime/', import.meta.url));
+  const root = process.env.PI_SERVER_STATE_DIR || fileURLToPath(new URL('../.agents/runtime/', import.meta.url));
   const port = parseDashboardPort();
   try {
     const dashboard = await startDashboard({ root, port, autoRefreshCatalog: true });

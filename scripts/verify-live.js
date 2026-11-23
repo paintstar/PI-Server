@@ -10,8 +10,8 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 const project = fileURLToPath(new URL('..', import.meta.url));
 const runDir = path.join(project, '.agents/records', 'live-' + Date.now());
 fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });
-const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-subagents-live-'));
-const transport = new StdioClientTransport({ command: process.execPath, args: [path.join(project, 'src/server.js')], env: { ...process.env, PI_SUBAGENTS_STATE_DIR: path.join(runDir, 'state') }, stderr: 'pipe' });
+const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-server-live-'));
+const transport = new StdioClientTransport({ command: process.execPath, args: [path.join(project, 'src/server.js')], env: { ...process.env, PI_SERVER_STATE_DIR: path.join(runDir, 'state') }, stderr: 'pipe' });
 const client = new Client({ name: 'live-acceptance', version: '1' });
 const results = { startedAt: new Date().toISOString(), checks: [], agents: [], completed: false };
 const after = {};

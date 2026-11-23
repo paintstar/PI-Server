@@ -66,7 +66,7 @@ async function collectHealth(manager, callbacks, managerOptions) {
   let modelsCount = 0; let modelsError;
   try { modelsCount = (await manager.models()).length; }
   catch (error) { modelsError = error.message; }
-  const pluginDir = path.join(process.env.PI_ANTIGRAVITY_PLUGINS_DIR || path.join(os.homedir(), '.gemini/config/plugins'), 'pi-subagents');
+  const pluginDir = path.join(process.env.PI_ANTIGRAVITY_PLUGINS_DIR || path.join(os.homedir(), '.gemini/config/plugins'), 'pi-server');
   const opencode = inspectOpencodeConfig();
   const sandbox = sandboxHealth();
   return {
@@ -202,9 +202,9 @@ function registerSessionTools({ register, manager, server, options, managerOptio
     }
     return { ...bound, waitEventsCommand: waitCommandFor({ sessionId }) };
   });
-  register('get_subagent_health', 'Read-only health check for pi-subagents runtime: Pi executable, independent controller, sandbox backend (macOS sandbox-exec / Linux & WSL2 bwrap), authenticated model count, dashboard URL, Antigravity plugin/hooks and OpenCode MCP/skill status.', {}, () => collectHealth(manager, callbacksRef(), managerOptions), true);
+  register('get_subagent_health', 'Read-only health check for pi-server runtime: Pi executable, independent controller, sandbox backend (macOS sandbox-exec / Linux & WSL2 bwrap), authenticated model count, dashboard URL, Antigravity plugin/hooks and OpenCode MCP/skill status.', {}, () => collectHealth(manager, callbacksRef(), managerOptions), true);
   register('update_agent_policy', 'Change limits or allowed models for an idle agent only after explicit human authorization. authorizationReference records the actual user instruction; it is a host assertion, not server proof of identity. If supported, the client additionally displays a confirmation form. Restart retains the Pi session and does not replay tasks.', { agentId: id, policy: policyShape, authorizationReference: z.string().min(1).max(2000) }, async values => {
-    if (process.env.PI_SUBAGENTS_CONFIRM_POLICY === '1' && server.server.getClientCapabilities()?.elicitation?.form) {
+    if (process.env.PI_SERVER_CONFIRM_POLICY === '1' && server.server.getClientCapabilities()?.elicitation?.form) {
       const confirmation = await server.server.elicitInput({ mode: 'form', message: `Allow changing Pi agent ${values.agentId}? Requested limits: ${JSON.stringify(values.policy)}. Authorization cited by host: ${values.authorizationReference}`, requestedSchema: { type: 'object', properties: { approved: { type: 'boolean', title: 'Allow the requested policy change' } }, required: ['approved'] } });
       if (confirmation.action !== 'accept' || confirmation.content?.approved !== true) throw new Error('User did not approve the policy change');
     }
@@ -297,15 +297,15 @@ function registerControlTools({ register, manager, resolveSessionId, callbacksRe
 
 export async function createServer(options = {}) {
   const managerOptions = {
-    root: options.root || process.env.PI_SUBAGENTS_STATE_DIR || path.join(projectRoot, '.agents/runtime'),
+    root: options.root || process.env.PI_SERVER_STATE_DIR || path.join(projectRoot, '.agents/runtime'),
     executable: options.executable || process.env.PI_EXECUTABLE || 'pi',
-    maxAgents: options.maxAgents || Number(process.env.PI_SUBAGENTS_MAX_AGENTS || defaultMaxAgents),
+    maxAgents: options.maxAgents || Number(process.env.PI_SERVER_MAX_AGENTS || defaultMaxAgents),
     ...(options.piAgentDir ? { piAgentDir: options.piAgentDir } : {}),
     ...(options.processFactory ? { processFactory: options.processFactory } : {}),
   };
   const manager = options.processFactory || options.embedded ? await new Manager(managerOptions).start() : await connectController(managerOptions);
   const taskStore = manager.call ? new RemoteTaskStore(manager) : new FileTaskStore(manager.storage.root, manager);
-  const server = new McpServer({ name: 'pi-subagents', version: packageVersion }, { instructions, taskStore, capabilities: { logging: {}, tasks: { list: {}, cancel: {}, requests: { tools: { call: {} } } } } });
+  const server = new McpServer({ name: 'pi-server', version: packageVersion }, { instructions, taskStore, capabilities: { logging: {}, tasks: { list: {}, cancel: {}, requests: { tools: { call: {} } } } } });
   function register(name, description, shape, handler, readOnly = false) {
     server.registerTool(name, { description, inputSchema: shape, annotations: { readOnlyHint: readOnly, destructiveHint: false, openWorldHint: !readOnly } }, async (values, extra) => {
       try {
@@ -341,7 +341,7 @@ export async function createServer(options = {}) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  if (!process.env.PI_SUBAGENTS_STATE_DIR && process.env.PI_DASHBOARD_AUTO !== '0') {
+  if (!process.env.PI_SERVER_STATE_DIR && process.env.PI_DASHBOARD_AUTO !== '0') {
     try { await ensureDashboard(); }
     catch (error) { process.stderr.write(`Pi dashboard: ${error.message}\n`); }
   }

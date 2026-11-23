@@ -78,7 +78,7 @@ test('wait-events command wakes a background parent with the next settled event'
   const { spawn: start, settled } = await import('./helpers/setup.js');
   const agent = await start(manager, cwd); await settled(manager, agent.id);
   const script = fileURLToPath(new URL('../scripts/wait-events.js', import.meta.url));
-  const output = execFileSync(process.execPath, [script, '--agent', agent.id, '--after', `${agent.id}=0`, '--timeout', '5'], { encoding: 'utf8', env: { ...process.env, PI_SUBAGENTS_STATE_DIR: manager.storage.root } });
+  const output = execFileSync(process.execPath, [script, '--agent', agent.id, '--after', `${agent.id}=0`, '--timeout', '5'], { encoding: 'utf8', env: { ...process.env, PI_SERVER_STATE_DIR: manager.storage.root } });
   assert.match(output, /event=settled[\s\S]*status=completed/);
-  assert.throws(() => execFileSync(process.execPath, [script, '--agent', agent.id, '--timeout', '1'], { env: { ...process.env, PI_SUBAGENTS_STATE_DIR: manager.storage.root } }), error => error.status === 2);
+  assert.throws(() => execFileSync(process.execPath, [script, '--agent', agent.id, '--timeout', '1'], { env: { ...process.env, PI_SERVER_STATE_DIR: manager.storage.root } }), error => error.status === 2);
 });

@@ -21,17 +21,17 @@ function backupOpencodeConfig(backupDir, processEnv) {
 }
 
 const opencodeSkill = `---
-name: pi-subagents
+name: pi-server
 description: Orchestrate independent Pi subagents across external models in OpenCode with session binding, wait-events wakeups, sandboxed workspaces, and diff review.
 ---
 
-# Pi Subagents Workflow in OpenCode
+# Pi Server Workflow in OpenCode
 
-Use \`pi-subagents\` only when the user explicitly authorizes external model delegation (for parallel work, independent second opinion, or cross-model review). Handle routine coding directly as the main agent.
+Use \`pi-server\` only when the user explicitly authorizes external model delegation (for parallel work, independent second opinion, or cross-model review). Handle routine coding directly as the main agent.
 
 ## Model Selection & Session Binding
 
-1. In OpenCode v2 Code Mode, invoke tools via \`tools["pi-subagents"].<toolName>(...)\` inside \`execute\` (call \`search({ query: "pi-subagents" })\` if some of the 24 tools are collapsed in the catalog).
+1. In OpenCode v2 Code Mode, invoke tools via \`tools["pi-server"].<toolName>(...)\` inside \`execute\` (call \`search({ query: "pi-server" })\` if some of the 24 tools are collapsed in the catalog).
 2. Inspect runtime health, enabled model profiles, context windows, and Pi tool defaults via \`get_subagent_health\`, \`get_model_profiles\`, and \`list_models\`.
 3. Call \`spawn_agent\` with explicit \`provider\`, \`model\`, absolute \`cwd\`, non-overlapping \`ownedPaths\`, and concrete acceptance criteria. Omit \`policy.maxTotalTokens\`, \`policy.maxModelRequests\`, and \`policy.maxRuntimeMs\` unless the user explicitly requested a hard cap.
 4. Pass your current OpenCode session ID (\`ses_...\`, discoverable via \`opencode session list --format json -n 5\`) as \`opencodeSessionId\` (or \`parentSession: { kind: "opencode", sessionId }\`) on \`spawn_agent\` / \`resume_agent\`, or call \`bind_session({ sessionId, kind: "opencode" })\` so callbacks and the Pi dashboard (\`http://127.0.0.1:3141/\`) group your children cleanly.
@@ -64,7 +64,7 @@ function reloadOpencodeService(opencodeBin, processEnv) {
   }
 }
 
-export function installOpencode({ opencodeBin, name = 'pi-subagents', command, env, backupDir, processEnv = process.env }) {
+export function installOpencode({ opencodeBin, name = 'pi-server', command, env, backupDir, processEnv = process.env }) {
   backupOpencodeConfig(backupDir, processEnv);
   const configDir = opencodeConfigDir(processEnv);
   const configFile = opencodeConfigFile(processEnv);
@@ -72,7 +72,7 @@ export function installOpencode({ opencodeBin, name = 'pi-subagents', command, e
 
   const mcpEnv = {
     ...env,
-    PI_SUBAGENTS_HOST: 'opencode',
+    PI_SERVER_HOST: 'opencode',
     ...(opencodeBin && opencodeBin !== 'config-dir' ? { OPENCODE_EXECUTABLE: opencodeBin } : {}),
   };
 
@@ -93,7 +93,7 @@ export function installOpencode({ opencodeBin, name = 'pi-subagents', command, e
   return { configFile, skillFile };
 }
 
-export function uninstallOpencode({ opencodeBin, name = 'pi-subagents', backupDir, processEnv = process.env }) {
+export function uninstallOpencode({ opencodeBin, name = 'pi-server', backupDir, processEnv = process.env }) {
   const configFile = opencodeConfigFile(processEnv);
   const skillDir = path.dirname(opencodeSkillFile(processEnv, name));
   let removed = false;

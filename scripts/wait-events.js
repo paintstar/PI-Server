@@ -37,7 +37,7 @@ if (!events.length || events.some(type => !callbackEvents.includes(type))) {
   process.exit(64);
 }
 
-const root = path.resolve(process.env.PI_SUBAGENTS_STATE_DIR || fileURLToPath(new URL('../.agents/runtime', import.meta.url)));
+const root = path.resolve(process.env.PI_SERVER_STATE_DIR || fileURLToPath(new URL('../.agents/runtime', import.meta.url)));
 const storage = new Storage(root);
 const watchersDir = path.join(root, 'watchers');
 const explicitOverrides = new Map();

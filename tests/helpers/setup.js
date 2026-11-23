@@ -8,7 +8,7 @@ export const fakePi = fileURLToPath(new URL('./fake-pi.js', import.meta.url));
 export const processFactory = options => new PiProcess({ ...options, executable: process.execPath, args: [fakePi, ...options.args] });
 processFactory.testOnly = true;
 export async function setup(t, options = {}) {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-subagents-test-'));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-server-test-'));
   const manager = await new Manager({ root: path.join(cwd, 'state'), processFactory, ...options }).start();
   const managers = [manager];
   t.after(async () => { for (const value of managers) await value.close(); fs.rmSync(cwd, { recursive: true, force: true }); });

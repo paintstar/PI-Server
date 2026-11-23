@@ -15,7 +15,7 @@ const activeAgentStatuses = new Set(['starting', 'running', 'waiting', 'finishin
 const operationRetentionMs = 7 * 86400 * 1000;
 const detachedParentRetentionMs = 86400 * 1000;
 
-const root = path.resolve(process.env.PI_SUBAGENTS_STATE_DIR);
+const root = path.resolve(process.env.PI_SERVER_STATE_DIR);
 const lock = path.join(root, 'controller.lock');
 if (fs.existsSync(lock)) {
   let old;
@@ -26,7 +26,7 @@ if (fs.existsSync(lock)) {
 }
 try { fs.writeFileSync(lock, JSON.stringify({ pid: process.pid }), { flag: 'wx', mode: 0o600 }); }
 catch (error) { if (error.code === 'EEXIST') process.exit(0); throw error; }
-const manager = await new Manager({ root, executable: process.env.PI_EXECUTABLE || 'pi', maxAgents: Number(process.env.PI_SUBAGENTS_MAX_AGENTS || defaultMaxAgents) }).start();
+const manager = await new Manager({ root, executable: process.env.PI_EXECUTABLE || 'pi', maxAgents: Number(process.env.PI_SERVER_MAX_AGENTS || defaultMaxAgents) }).start();
 const parents = new Map();
 const parentWake = new EventEmitter();
 parentWake.setMaxListeners(0);

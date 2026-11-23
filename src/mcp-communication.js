@@ -17,7 +17,7 @@ export function installCommunication(server, manager, register) {
     const uri = uriOf(event.agentId);
     if (['ready', 'resumed', 'closed'].includes(event.type)) notify({ method: 'notifications/resources/list_changed' });
     if (subscribed.has(uri)) notify({ method: 'notifications/resources/updated', params: { uri } });
-    if (['question', 'settled', 'process_failed', 'budget_limit'].includes(event.type)) server.server.sendLoggingMessage({ level: event.type === 'process_failed' ? 'error' : 'info', logger: 'pi-subagents', data: { agentId: event.agentId, sequence: event.sequence, type: event.type, questionId: event.questionId, status: event.status } }).catch(error => process.stderr.write(`Pi log notification failed: ${error.message}\n`));
+    if (['question', 'settled', 'process_failed', 'budget_limit'].includes(event.type)) server.server.sendLoggingMessage({ level: event.type === 'process_failed' ? 'error' : 'info', logger: 'pi-server', data: { agentId: event.agentId, sequence: event.sequence, type: event.type, questionId: event.questionId, status: event.status } }).catch(error => process.stderr.write(`Pi log notification failed: ${error.message}\n`));
   });
   manager.on('controller_error', error => { process.stderr.write(`Pi controller: ${error.message}\n`); });
   register('get_client_capabilities', 'Inspect negotiated MCP client capabilities and supported server features. Notifications do not imply that the host automatically wakes the parent model after a turn has ended. Use wait/read fallback if the host does not consume asynchronous events.', {}, () => ({

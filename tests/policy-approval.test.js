@@ -1,8 +1,8 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { createServer } from '../src/server.js';import { setup, processFactory, settled } from './helpers/setup.js';
-test('policy changes require client approval when enabled by PI_SUBAGENTS_CONFIRM_POLICY=1 and preserve usage and authorization evidence', async t => {
- process.env.PI_SUBAGENTS_CONFIRM_POLICY='1';t.after(()=>{delete process.env.PI_SUBAGENTS_CONFIRM_POLICY;});
+test('policy changes require client approval when enabled by PI_SERVER_CONFIRM_POLICY=1 and preserve usage and authorization evidence', async t => {
+ process.env.PI_SERVER_CONFIRM_POLICY='1';t.after(()=>{delete process.env.PI_SERVER_CONFIRM_POLICY;});
  const { cwd, manager: helper, track } = await setup(t);const { server, manager } = await createServer({ root: helper.storage.root+'-approval', processFactory });track(manager);
  const [ct,st] = InMemoryTransport.createLinkedPair();const client = new Client({name:'approval-test',version:'1'},{capabilities:{elicitation:{form:{}}}});let approve=false;
  client.setRequestHandler(ElicitRequestSchema, async request => { assert.match(request.params.message,/maxModelRequests/);return approve?{action:'accept',content:{approved:true}}:{action:'decline'}; });

@@ -1,6 +1,6 @@
 # 可靠通信、权限沙箱与协议规范
 
-本文档面向希望深入了解 Pi Subagents 内部状态流转、沙箱隔离边界与 MCP 协议映射的开发者。当前 1.7.0 版本基于 `@modelcontextprotocol/sdk` 1.26.0 构建，提供 **24 个主会话工具**，同时支持 MCP 2025-11-25 的资源订阅、结构化日志、进度通知与实验性 Tasks。
+本文档面向希望深入了解 Pi Server 内部状态流转、沙箱隔离边界与 MCP 协议映射的开发者。当前 1.7.0 版本基于 `@modelcontextprotocol/sdk` 1.26.0 构建，提供 **24 个主会话工具**，同时支持 MCP 2025-11-25 的资源订阅、结构化日志、进度通知与实验性 Tasks。
 
 ## 消息投递与断线恢复
 
@@ -33,7 +33,7 @@
 2. **`dev`（开发模式）**：允许子代理运行 `uv`、本地虚拟环境、构建缓存（`~/.cache`、`~/Library/Caches`）并在独立 Git 工作树内执行完整测试与本地提交，同时继续在内核层屏蔽 `~/.pi`、`~/.codex`、`~/.ssh`、`~/.config/opencode`、`~/.local/share/opencode` 与管理进程状态目录。
 3. **`bypass`（完全放开路径）**：放开工作区外及凭据目录读写权限并继承常用 `PATH`，仅继续保护管理进程状态目录（防止伪造其他代理令牌），只适用于用户明确信任的本机运维任务。
 
-修改已有空闲代理的策略需调用 `update_agent_policy` 并附上用户指令说明 `authorizationReference`；设置 `PI_SUBAGENTS_CONFIRM_POLICY=1` 时，支持 MCP Elicitation 的客户端还会弹出交互确认表单。
+修改已有空闲代理的策略需调用 `update_agent_policy` 并附上用户指令说明 `authorizationReference`；设置 `PI_SERVER_CONFIRM_POLICY=1` 时，支持 MCP Elicitation 的客户端还会弹出交互确认表单。
 
 ## 标准 MCP 协议与跨宿主唤醒
 

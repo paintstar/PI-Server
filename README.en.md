@@ -1,6 +1,6 @@
 <div align="center">
-  <img src="docs/assets/logo.svg" width="88" height="88" alt="Pi Subagents Logo" />
-  <h1>Pi Subagents</h1>
+  <img src="docs/assets/logo.svg" width="88" height="88" alt="Pi Server Logo" />
+  <h1>Pi Server</h1>
   <p><strong>Multi-Model Subagent Orchestration MCP & Real-Time Local Console for Antigravity, Claude Code, Codex, and OpenCode</strong></p>
 
   <p>
@@ -17,12 +17,12 @@
 </div>
 
 <p align="center">
-  <img src="docs/assets/dashboard-overview.png" width="100%" alt="Pi Subagents Live Console Overview" />
+  <img src="docs/assets/dashboard-overview.png" width="100%" alt="Pi Server Live Console Overview" />
 </p>
 
 ---
 
-**Pi Subagents** wraps your local [Pi Coding Agent](https://pi.dev) runtime into a host-agnostic Model Context Protocol (MCP) orchestration server paired with a dependency-free real-time web console (**Pi Dispatch Console** at `http://127.0.0.1:3141/`). Your primary agent decomposes work, selects models from structured capability profiles, and verifies results, while isolated Pi subagents execute tasks in dedicated Git worktrees under OS-level sandboxing (macOS Seatbelt / Linux & WSL2 `bubblewrap`)—with durable disconnect recovery, blocking parent Q&A, and native wake-up hooks.
+**Pi Server** wraps your local [Pi Coding Agent](https://pi.dev) runtime into a host-agnostic Model Context Protocol (MCP) orchestration server paired with a dependency-free real-time web console (**Pi Dispatch Console** at `http://127.0.0.1:3141/`). Your primary agent decomposes work, selects models from structured capability profiles, and verifies results, while isolated Pi subagents execute tasks in dedicated Git worktrees under OS-level sandboxing (macOS Seatbelt / Linux & WSL2 `bubblewrap`)—with durable disconnect recovery, blocking parent Q&A, and native wake-up hooks.
 
 ## Key Highlights
 
@@ -118,14 +118,14 @@ npm ci --ignore-scripts
 npm run check
 npm test
 
-# 2. Register pi-subagents across installed Antigravity, Claude Code, Codex, and OpenCode clients
+# 2. Register pi-server across installed Antigravity, Claude Code, Codex, and OpenCode clients
 npm run install:all
 ```
 
 Target individual hosts or remove integrations cleanly at any time (existing client configs are backed up with `0600` permissions under `.agents/records/config-backups/`):
 
 ```bash
-npm run install:antigravity   # Builds & validates ~/.gemini/config/plugins/pi-subagents (--strict)
+npm run install:antigravity   # Builds & validates ~/.gemini/config/plugins/pi-server (--strict)
 npm run install:claude        # Registers user-scope stdio MCP in ~/.claude.json
 npm run install:codex         # Registers global MCP server in ~/.codex/config.toml
 npm run install:opencode      # Registers local MCP in ~/.config/opencode/opencode.jsonc & installs SKILL.md
@@ -148,9 +148,9 @@ npm run dashboard
 | Host | Session Binding | Asynchronous Wake-Up Mechanism |
 | --- | --- | --- |
 | **Google Antigravity** | Pass `antigravitySessionId` on `spawn_agent` or call `bind_session` | Bundled `PreInvocation` and `Stop` hooks inject undelivered events and guard against premature turn exit; pair with `mustWait.antigravityBackgroundCommand` (`node scripts/wait-events.js --session <id>`) for instant reactive wakeups, deduplicated via `antigravityDeliveredSeq`. |
-| **Claude Code** | Auto-detected via `CLAUDE_CODE_SESSION_ID` | Emits `notifications/claude/channel` when started with `--dangerously-load-development-channels server:pi-subagents`, or wakes any session via background `npm run wait-events -- --agent <id>`. |
+| **Claude Code** | Auto-detected via `CLAUDE_CODE_SESSION_ID` | Emits `notifications/claude/channel` when started with `--dangerously-load-development-channels server:pi-server`, or wakes any session via background `npm run wait-events -- --agent <id>`. |
 | **OpenAI Codex** | Pass `callback.codexThreadId` from `echo $CODEX_THREAD_ID` | Enqueues settle, question, failure, and limit events directly into the parent thread via `codex queue --thread <id>`. |
-| **OpenCode** | Pass `opencodeSessionId` (or `parentSession: { kind: "opencode", sessionId }`), or call `bind_session(kind="opencode")` | Detects the `opencode` MCP client automatically, installs `~/.config/opencode/skills/pi-subagents/SKILL.md`, and supports `wait-events.js --session <id>` plus opt-in `opencodeCliWake` (`opencode run --session <id>`), deduplicated via the shared monotonic cursor. |
+| **OpenCode** | Pass `opencodeSessionId` (or `parentSession: { kind: "opencode", sessionId }`), or call `bind_session(kind="opencode")` | Detects the `opencode` MCP client automatically, installs `~/.config/opencode/skills/pi-server/SKILL.md`, and supports `wait-events.js --session <id>` plus opt-in `opencodeCliWake` (`opencode run --session <id>`), deduplicated via the shared monotonic cursor. |
 
 ## MCP Tool Reference (24 Tools)
 

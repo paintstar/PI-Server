@@ -23,7 +23,7 @@ test('parentIdentity recognizes OpenCode environment and client name without lea
   const fromEnv = parentIdentity({ OPENCODE_SESSION_ID: 'ses_alpha123' }, '');
   assert.equal(fromEnv.kind, 'opencode');
   assert.equal(fromEnv.sessionId, 'ses_alpha123');
-  const fromHostFlag = parentIdentity({ PI_SUBAGENTS_HOST: 'opencode', ANTIGRAVITY_CONVERSATION_ID: 'conv-leaked' }, '');
+  const fromHostFlag = parentIdentity({ PI_SERVER_HOST: 'opencode', ANTIGRAVITY_CONVERSATION_ID: 'conv-leaked' }, '');
   assert.equal(fromHostFlag.kind, 'opencode');
   assert.equal(fromHostFlag.sessionId, undefined);
   const fromClientName = parentIdentity({ ANTIGRAVITY_CONVERSATION_ID: 'conv-leaked', ANTIGRAVITY_PROJECT_ID: 'proj-leaked' }, 'opencode');
@@ -36,9 +36,9 @@ test('MCP tools support OpenCode host detection, session binding, filtering, wai
   const { cwd, manager: helper, track } = await setup(t);
   const ocCfgDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-oc-health-'));
   t.after(() => fs.rmSync(ocCfgDir, { recursive: true, force: true }));
-  fs.writeFileSync(path.join(ocCfgDir, 'opencode.jsonc'), '// comment\n{"mcp":{"servers":{"pi-subagents":{"type":"local","command":["node","server.js"]}}}}\n');
-  fs.mkdirSync(path.join(ocCfgDir, 'skills/pi-subagents'), { recursive: true });
-  fs.writeFileSync(path.join(ocCfgDir, 'skills/pi-subagents/SKILL.md'), '# skill\n');
+  fs.writeFileSync(path.join(ocCfgDir, 'opencode.jsonc'), '// comment\n{"mcp":{"servers":{"pi-server":{"type":"local","command":["node","server.js"]}}}}\n');
+  fs.mkdirSync(path.join(ocCfgDir, 'skills/pi-server'), { recursive: true });
+  fs.writeFileSync(path.join(ocCfgDir, 'skills/pi-server/SKILL.md'), '# skill\n');
 
   const prevCfgDir = process.env.OPENCODE_CONFIG_DIR;
   process.env.OPENCODE_CONFIG_DIR = ocCfgDir;
@@ -123,7 +123,7 @@ test('wait-events --session wakes on OpenCode session event, advances unified cu
   cb.configure(agent.id, { opencodeSessionId: 'ses_watch_1' }, 0);
 
   const child = spawnChild(process.execPath, [waitScript, '--session', 'ses_watch_1', '--events', 'settled', '--timeout', '5'], {
-    env: { ...process.env, PI_SUBAGENTS_STATE_DIR: manager.storage.root },
+    env: { ...process.env, PI_SERVER_STATE_DIR: manager.storage.root },
     encoding: 'utf8',
   });
   let output = '';
@@ -203,10 +203,10 @@ test('removeJsoncMcpServer preserves comments and unrelated servers across first
     "servers": {
       // Keep alpha
       "alpha": { "type": "local", "command": ["echo", "a"] },
-      "pi-subagents": {
+      "pi-server": {
         "type": "local",
         "command": ["node", "src/server.js"],
-        "environment": { "PI_SUBAGENTS_HOST": "opencode" }
+        "environment": { "PI_SERVER_HOST": "opencode" }
       },
       /* Keep omega */
       "omega": { "type": "remote", "url": "https://example.com" }
@@ -214,7 +214,7 @@ test('removeJsoncMcpServer preserves comments and unrelated servers across first
   }
 }
 `;
-  const mid = removeJsoncMcpServer(sample, 'pi-subagents');
+  const mid = removeJsoncMcpServer(sample, 'pi-server');
   assert.equal(mid.changed, true);
   assert.match(mid.content, /\/\/ Top comment/);
   assert.match(mid.content, /\/\/ Keep alpha/);
@@ -229,14 +229,14 @@ test('removeJsoncMcpServer preserves comments and unrelated servers across first
   const noop = removeJsoncMcpServer(lastRemoved.content, 'missing');
   assert.equal(noop.changed, false);
 
-  const inserted = upsertJsoncMcpServer(lastRemoved.content, 'pi-subagents', { type: 'local', command: ['node', 'src/server.js'] });
+  const inserted = upsertJsoncMcpServer(lastRemoved.content, 'pi-server', { type: 'local', command: ['node', 'src/server.js'] });
   assert.match(inserted, /\/\/ Top comment/);
   assert.match(inserted, /\/\/ Keep alpha/);
-  assert.deepEqual(Object.keys(parseJsonc(inserted).mcp.servers), ['alpha', 'pi-subagents']);
+  assert.deepEqual(Object.keys(parseJsonc(inserted).mcp.servers), ['alpha', 'pi-server']);
 
-  const replaced = upsertJsoncMcpServer(inserted, 'pi-subagents', { type: 'local', command: ['node', 'v2.js'] });
+  const replaced = upsertJsoncMcpServer(inserted, 'pi-server', { type: 'local', command: ['node', 'v2.js'] });
   assert.match(replaced, /\/\/ Top comment/);
-  assert.deepEqual(parseJsonc(replaced).mcp.servers['pi-subagents'].command, ['node', 'v2.js']);
+  assert.deepEqual(parseJsonc(replaced).mcp.servers['pi-server'].command, ['node', 'v2.js']);
 });
 
 test('install.js installs and uninstalls OpenCode MCP entry and skill with 0600 backup while preserving comments', t => {
@@ -267,8 +267,8 @@ test('install.js installs and uninstalls OpenCode MCP entry and skill with 0600 
   assert.match(afterInstallRaw, /\/\/ User comment/);
   const afterInstall = parseJsonc(afterInstallRaw);
   assert.ok(afterInstall.mcp.servers.existing);
-  assert.equal(afterInstall.mcp.servers['pi-subagents'].type, 'local');
-  assert.equal(afterInstall.mcp.servers['pi-subagents'].environment.PI_SUBAGENTS_HOST, 'opencode');
+  assert.equal(afterInstall.mcp.servers['pi-server'].type, 'local');
+  assert.equal(afterInstall.mcp.servers['pi-server'].environment.PI_SERVER_HOST, 'opencode');
 
   const backups = fs.readdirSync(backupDir).filter(name => name.startsWith('opencode-'));
   assert.ok(backups.length >= 1);

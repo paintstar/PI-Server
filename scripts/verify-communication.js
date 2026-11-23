@@ -3,7 +3,7 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';import {StdioCl
 const project=fileURLToPath(new URL('..',import.meta.url));
 const evidence=path.join(project,'.agents/records','communication-'+Date.now());fs.mkdirSync(evidence,{recursive:true,mode:0o700});const root=evidence+'/state';const cwd=fs.mkdtempSync(path.join(os.tmpdir(),'pi-communication-live-'));
 let client;const agents=[];const result={startedAt:new Date().toISOString(),checks:[]};
-async function connect(){client=new Client({name:'communication-acceptance',version:'1'});await client.connect(new StdioClientTransport({command:process.execPath,args:[project+'/src/server.js'],env:{...process.env,PI_SUBAGENTS_STATE_DIR:root},stderr:'pipe'}));}
+async function connect(){client=new Client({name:'communication-acceptance',version:'1'});await client.connect(new StdioClientTransport({command:process.execPath,args:[project+'/src/server.js'],env:{...process.env,PI_SERVER_STATE_DIR:root},stderr:'pipe'}));}
 async function call(name,args={}){const r=await client.callTool({name,arguments:args},undefined,{timeout:55000});if(r.isError)throw new Error(r.content[0].text);return r.structuredContent.result;}
 async function until(id,predicate){const end=Date.now()+90000;while(Date.now()<end){const r=await call('read_agent',{agentId:id});if(predicate(r))return r;if(r.agent.status==='failed')throw new Error(r.agent.error);await call('wait_agent',{agentIds:[id],after:{[id]:r.nextSequence},timeoutMs:10000});}throw new Error('Acceptance timed out');}
 function checked(name){result.checks.push(name);console.log(name);}

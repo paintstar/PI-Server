@@ -1,4 +1,4 @@
-# Pi Subagents（Pi 调度台）
+# Pi Server（Pi 调度台）
 
 ## 这个项目是什么
 面向 Google Antigravity、Claude Code、OpenAI Codex 和 OpenCode 的多模型子代理调度平台，包含标准 stdio MCP 服务与实时本机控制台“Pi 调度台”。每个子代理会话由独立进程持久化托管，支持工作树隔离、双向消息、阻塞提问、断线恢复、临时模型切换、四端回调唤醒、模型能力画像配置与只读改动审查。

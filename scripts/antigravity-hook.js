@@ -33,7 +33,7 @@ const hookEvent = payload.hookEventName || '';
 const conversationId = typeof payload.conversationId === 'string' ? payload.conversationId.trim() : '';
 if (!conversationId || !sessionIdPattern.test(conversationId)) respond(hookEvent === 'Stop' ? { decision: 'allow' } : {});
 
-const root = path.resolve(process.env.PI_SUBAGENTS_STATE_DIR || fileURLToPath(new URL('../.agents/runtime', import.meta.url)));
+const root = path.resolve(process.env.PI_SERVER_STATE_DIR || fileURLToPath(new URL('../.agents/runtime', import.meta.url)));
 if (!fs.existsSync(root)) respond(hookEvent === 'Stop' ? { decision: 'allow' } : {});
 
 const storage = new Storage(root);
@@ -118,7 +118,7 @@ if (hookEvent === 'Stop') {
   if (!remainingActive.length || hasLiveWatcher(remainingActive)) respond({ decision: 'allow' });
   respond({
     decision: 'continue',
-    reason: `Active pi-subagents children (${remainingActive.join(', ')}) are still running for conversation ${conversationId} without a watcher. Call wait_agent or start background watcher: ${waitCommandFor({ sessionId: conversationId })}`,
+    reason: `Active pi-server children (${remainingActive.join(', ')}) are still running for conversation ${conversationId} without a watcher. Call wait_agent or start background watcher: ${waitCommandFor({ sessionId: conversationId })}`,
   });
 }
 

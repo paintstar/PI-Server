@@ -39,14 +39,14 @@ const overlay = {
   permissions: [{ action: '*', resource: '*', effect: 'allow' }],
   mcp: {
     servers: {
-      'pi-subagents': {
+      'pi-server': {
         type: 'local',
         command: [process.execPath, path.join(root, 'src/server.js')],
         environment: {
           PI_EXECUTABLE: piBin,
-          PI_SUBAGENTS_STATE_DIR: stateDir,
+          PI_SERVER_STATE_DIR: stateDir,
           PI_DASHBOARD_AUTO: '0',
-          PI_SUBAGENTS_HOST: 'opencode',
+          PI_SERVER_HOST: 'opencode',
           OPENCODE_EXECUTABLE: opencodeBin,
           PATH: process.env.PATH || '/usr/bin:/bin',
         },
@@ -57,7 +57,7 @@ const overlay = {
 fs.writeFileSync(extraConfig, `${JSON.stringify(overlay, null, 2)}\n`, { mode: 0o600 });
 
 const childPrompt = useFakePi ? 'OPENCODE-PI-READY' : '只回复 OPENCODE-PI-READY。不要调用工具或修改文件。';
-const prompt = `这是用户授权的隔离 MCP 接入验证。请通过 Code Mode 中的 tools["pi-subagents"] 工具执行：1. 调用 get_client_capabilities 和 get_subagent_health，随后 list_models(provider=${JSON.stringify(targetProvider)})。2. 调用 spawn_agent(cwd=${JSON.stringify(cwd)}, provider=${JSON.stringify(targetProvider)}, model=${JSON.stringify(targetModel)}, thinking="low", ownedPaths=["demo"], workspaceMode="shared", prompt=${JSON.stringify(childPrompt)})。3. 用 read_agent / wait_agent 等待实际完成，wait_agent.timeoutMs 最大45000，进度事件不代表完成。4. 确认返回文字含 OPENCODE-PI-READY，调用 close_agent 关闭该代理。不要执行其他工作。最后只报告 PASS 或具体失败原因。`;
+const prompt = `这是用户授权的隔离 MCP 接入验证。请通过 Code Mode 中的 tools["pi-server"] 工具执行：1. 调用 get_client_capabilities 和 get_subagent_health，随后 list_models(provider=${JSON.stringify(targetProvider)})。2. 调用 spawn_agent(cwd=${JSON.stringify(cwd)}, provider=${JSON.stringify(targetProvider)}, model=${JSON.stringify(targetModel)}, thinking="low", ownedPaths=["demo"], workspaceMode="shared", prompt=${JSON.stringify(childPrompt)})。3. 用 read_agent / wait_agent 等待实际完成，wait_agent.timeoutMs 最大45000，进度事件不代表完成。4. 确认返回文字含 OPENCODE-PI-READY，调用 close_agent 关闭该代理。不要执行其他工作。最后只报告 PASS 或具体失败原因。`;
 
 try {
   execFileSync('git', ['init', '-q'], { cwd });

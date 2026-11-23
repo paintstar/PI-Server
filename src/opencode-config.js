@@ -18,7 +18,7 @@ export function opencodeConfigFile(env = process.env) {
   return jsonc;
 }
 
-export function opencodeSkillFile(env = process.env, name = 'pi-subagents') {
+export function opencodeSkillFile(env = process.env, name = 'pi-server') {
   return path.join(opencodeConfigDir(env), 'skills', name, 'SKILL.md');
 }
 
@@ -259,7 +259,7 @@ export function removeJsoncMcpServer(source, serverName) {
   }
 }
 
-export function inspectOpencodeConfig(env = process.env, serverName = 'pi-subagents') {
+export function inspectOpencodeConfig(env = process.env, serverName = 'pi-server') {
   const configFile = opencodeConfigFile(env);
   const skillFile = opencodeSkillFile(env, serverName);
   const configExists = fs.existsSync(configFile);
