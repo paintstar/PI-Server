@@ -143,20 +143,7 @@ flowchart LR
 - **Durable Q&A, Callbacks & Diff Review (6)**: `reply_question`, `read_messages`, `ack_messages`, `bind_session`, `set_agent_callback`, `get_agent_changes` (untracked-aware)
 - **Policy Governance & Standard MCP Tasks (4)**: `update_agent_policy`, `get_client_capabilities`, `run_agent_task`, `resume_task`
 
-## Evolution Overview (v1.7 Upstream Baseline → v2.0 Original Engineering)
-
-Pi Server evolved from the MIT-licensed [mumuxsy/pi-subagents](https://github.com/mumuxsy/pi-subagents) (`v1.7.0`). Below is the clear boundary between the upstream foundation and original **Pi Server v2.0 (`shin`)** engineering:
-
-| Area | Upstream v1.7.0 Baseline | **Pi Server v2.0 Original Engineering** |
-| --- | --- | --- |
-| Hosts & OS | 3 hosts (AGY/Claude/Codex), macOS Seatbelt only | **OpenCode 4th host** (comment-preserving JSONC + Skill + unified cursor wake) & **Linux/WSL2 `bubblewrap` backend** + dual-OS CI |
-| Multi-Model Layer | 24 low-level orchestration primitives | **`consult` / `council` / `cross_review`**, read-only/non-interactive sandbox policies, `dryRun` cost/capacity preflight, fail-closed review verdicts |
-| Acceptance Gate | Turn-stop `completed` only | Sandboxed **`acceptanceChecks`**, `completed-verified` / `completed-unverified` 5-tier states, deadlock-free abort, auto-reverify on fix |
-| Backend Hardening | Chunked UTF-8 risk, untracked diff blind spot, per-SSE watcher polling | 8 hardening fixes (`Buffer.concat` + 512KB, full 4-host + cloud credential masking, untracked diff generation, strict hot-upgrade, in-memory event cache, shared SSE broadcaster) |
-| Console & CLI | 3-pane viewer + npm scripts | Zero-framework v2.0 views (council grid, review-to-diff jump, acceptance trace, 4-host×sandbox matrix), new 4-host bus SVG logo, unified **`pi-server` CLI** (`doctor` / `ask` / `fnm` stabilization) |
-
-## Documentation, Attribution & License
+## Documentation & License
 
 - [Protocol, Sandbox & Reliability Spec (中文)](docs/communication.md) · [Verification Matrix (中文)](docs/verification.md) · [Contributing Guide](CONTRIBUTING.md) · [Security Policy](SECURITY.md) · [Changelog](CHANGELOG.md)
-- **Credits**: Evolved from [mumuxsy/pi-subagents](https://github.com/mumuxsy/pi-subagents) (MIT) with full original copyright preserved in [LICENSE](LICENSE). Read-only provider quota formats reference [CodexBar](https://github.com/steipete/CodexBar) and official provider APIs, independently implemented in Node.js.
-- Released under the [MIT License](LICENSE) (`Copyright (c) 2026 mumuxsy`, `Copyright (c) 2026 shin`).
+- Released under the [MIT License](LICENSE) (Copyright © 2026 mumuxsy & shin).

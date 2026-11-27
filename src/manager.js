@@ -20,6 +20,7 @@ const extension = fileURLToPath(new URL('../extensions/communication.ts', import
 export const maxAgentLimit = 50;
 export const defaultMaxAgents = 50;
 const activeStatuses = new Set(['starting', 'running', 'waiting', 'finishing']);
+const maxInlinePromptBytes = 32768;
 const textOf = message => (message?.content || []).filter(block => block.type === 'text').map(block => block.text).join('\n');
 
 /** Own Pi processes, durable sessions, model changes and events for an independent controller. */
@@ -187,8 +188,16 @@ export class Manager extends EventEmitter {
     if (!this.processFactory.testOnly) sandboxProfile(toolPolicy);
     const policyFile = path.join(this.storage.directory(r.id), 'tool-policy.json'); atomicWriteJson(policyFile, toolPolicy);
     const instructions = buildAgentInstructions(r);
+    let systemPromptArg = instructions;
+    if (Buffer.byteLength(instructions, 'utf8') > maxInlinePromptBytes) {
+      const instructionsFile = path.join(this.storage.directory(r.id), 'instructions.md');
+      const temporary = `${instructionsFile}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`;
+      fs.writeFileSync(temporary, instructions, { mode: 0o600 });
+      fs.renameSync(temporary, instructionsFile);
+      systemPromptArg = instructionsFile;
+    }
     const args = ['--mode', 'rpc', '--offline', '--provider', r.model.provider, '--model', r.model.model, '--thinking', r.thinking,
-      '--no-extensions', '--extension', extension, '--extension', fileURLToPath(new URL('../extensions/policy.ts', import.meta.url)), '--append-system-prompt', instructions, '--session-dir', path.join(this.storage.directory(r.id), 'sessions')];
+      '--no-extensions', '--extension', extension, '--extension', fileURLToPath(new URL('../extensions/policy.ts', import.meta.url)), '--append-system-prompt', systemPromptArg, '--session-dir', path.join(this.storage.directory(r.id), 'sessions')];
     if (r.loadSkills === false) args.push('--no-skills');
     if (r.loadContextFiles === false) args.push('--no-context-files');
     if (r.sessionFile) args.push('--session', r.sessionFile);

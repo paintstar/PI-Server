@@ -13,7 +13,7 @@ import { defaultModelProfile } from '../src/model-profiles.js';
 import { connectController } from '../src/controller-client.js';
 import { startDashboard } from '../src/dashboard.js';
 import { Manager } from '../src/manager.js';
-import { fakePi, setup, spawn, settled } from './helpers/setup.js';
+import { fakePi, processFactory, setup, spawn, settled } from './helpers/setup.js';
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -108,6 +108,7 @@ test('Dashboard and Controller decode split multi-byte UTF-8 chunks without corr
   const { manager, cwd } = await setup(t);
   const a = await spawn(manager, cwd);
   await settled(manager, a.id);
+  assert.equal(fs.existsSync(path.join(manager.storage.directory(a.id), 'instructions.md')), false);
 
   const dashboard = await startDashboard({ root: manager.storage.root, port: 0, token: 'utf8-token' });
   t.after(() => dashboard.close());
@@ -176,6 +177,20 @@ test('Dashboard and Controller decode split multi-byte UTF-8 chunks without corr
   const savedRec = JSON.parse(fs.readFileSync(path.join(ctrlRoot, bigSpawn.id, 'agent.json'), 'utf8'));
   assert.equal(savedRec.context.includes('\uFFFD'), false);
   assert.equal(savedRec.context.length, bigChinese.length);
+  const instructionsPath = path.join(ctrlRoot, bigSpawn.id, 'instructions.md');
+  assert.equal(fs.existsSync(instructionsPath), true);
+  assert.equal(fs.statSync(instructionsPath).mode & 0o777, 0o600);
+  const instructionsContent = fs.readFileSync(instructionsPath, 'utf8');
+  assert.equal(instructionsContent.includes('\uFFFD'), false);
+  assert.ok(instructionsContent.includes(bigChinese));
+  let bigState;
+  for (let i = 0; i < 60; i++) {
+    bigState = await client.read(bigSpawn.id);
+    if (bigState.agent.status === 'completed' || bigState.agent.status === 'failed') break;
+    await pause(25);
+  }
+  assert.equal(bigState.agent.status, 'completed');
+  assert.equal(bigState.agent.lastText, 'OK');
 
   await assert.rejects(
     client.spawn({ cwd: ctrlDir, prompt: 'OK', context: 'x'.repeat(520000), provider: 'fake', model: 'cheap', ownedPaths: ['other'], workspaceMode: 'shared' }),
@@ -309,4 +324,34 @@ test('antigravity-hook reads unified deliveredSeq cursor even if legacy field is
     env: { ...process.env, PI_SERVER_STATE_DIR: manager.storage.root },
   });
   assert.deepEqual(JSON.parse(out), {});
+});
+
+test('Manager spills >32KB instructions to instructions.md to stay under Linux MAX_ARG_STRLEN while keeping <=32KB inline', async t => {
+  const launches = [];
+  const recordingFactory = options => {
+    if (!options.args.includes('--no-session')) launches.push(options.args);
+    return processFactory(options);
+  };
+  recordingFactory.testOnly = true;
+  const { manager, cwd } = await setup(t, { processFactory: recordingFactory });
+
+  const small = await spawn(manager, cwd, 'SMALL_OK', { context: '小上下文' });
+  assert.equal((await settled(manager, small.id)).status, 'completed');
+  const smallPromptArg = launches[0][launches[0].indexOf('--append-system-prompt') + 1];
+  assert.ok(smallPromptArg.includes('小上下文'));
+  assert.equal(fs.existsSync(path.join(manager.storage.directory(small.id), 'instructions.md')), false);
+
+  const largeContext = '中文大上下文'.repeat(10000);
+  assert.ok(Buffer.byteLength(largeContext, 'utf8') > 150000);
+  const large = await spawn(manager, cwd, 'LARGE_OK', { context: largeContext, ownedPaths: ['other'] });
+  assert.equal((await settled(manager, large.id)).status, 'completed');
+  const largeArgs = launches[1];
+  const largePromptArg = largeArgs[largeArgs.indexOf('--append-system-prompt') + 1];
+  const expectedPath = path.join(manager.storage.directory(large.id), 'instructions.md');
+  assert.equal(largePromptArg, expectedPath);
+  assert.ok(largeArgs.every(arg => Buffer.byteLength(arg, 'utf8') < 131072));
+  assert.equal(fs.statSync(expectedPath).mode & 0o777, 0o600);
+  const written = fs.readFileSync(expectedPath, 'utf8');
+  assert.equal(written.includes('\uFFFD'), false);
+  assert.ok(written.includes(largeContext));
 });

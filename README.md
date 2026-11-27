@@ -194,23 +194,8 @@ flowchart LR
 | `PI_BWRAP_EXECUTABLE` | 自动探测 `bwrap` | 在 Linux / WSL2 上显式指定 `bubblewrap` 路径 |
 | `PI_SERVER_CONFIRM_POLICY` | `0` | 设为 `1` 时对 `update_agent_policy` 启用 MCP Elicitation 确认表单 |
 
-## 版本演进对比（v1.7 上游基线 → v2.0 原创工程增量）
-
-本项目基于 MIT 协议的 [mumuxsy/pi-subagents](https://github.com/mumuxsy/pi-subagents)（v1.7.0）持续演进，以下清晰区分上游基线与 **Pi Server v2.0（author: `shin`）** 的原创架构增量：
-
-| 领域 | 上游 v1.7.0 基线 | **Pi Server v2.0 原创工程增量** |
-| --- | --- | --- |
-| 宿主与平台 | 三端宿主（AGY/Claude/Codex），仅 macOS Seatbelt | 新增 **OpenCode 第四端**（保留注释 JSONC + Skill + 统一游标唤醒）与 **Linux/WSL2 `bubblewrap` 双平台沙箱** + 双平台 CI |
-| 多模型编排 | 24 个底层调度原语，手工拼装协作 | 新增 **`consult` / `council` / `cross_review`**、只读无网并发策略、`dryRun` 预算与容量预检、Fail-Closed 裁决归一化 |
-| 验收闭环 | 仅 `completed` 回合结束态，无自动命令门禁 | 新增沙箱内 **`acceptanceChecks`**、`completed-verified` / `completed-unverified` 五级状态、无死锁中断与修完自动重验 |
-| 后端加固 | 存在 UTF-8 跨分片拼接、`bwrap` 文件掩蔽、未跟踪 diff 遗漏与 SSE 多实例轮询瓶颈 | 8 项生产级加固（`Buffer.concat` + 512KB、四端+云凭据全屏蔽、未跟踪新文件 diff、三零热替换、内存事件尾窗、单实例 SSE 广播器 + `mtimeMs` 缓存） |
-| 面板与 CLI | 3 栏查看面板 + 零散 `npm run` 脚本 | 零框架面板 v2.0（会诊对比网格、审查结论联动 Diff、验收明细卡、四端×双沙箱矩阵）、新四端总线 Logo、统一 **`pi-server` CLI**（`doctor` / `ask` / `fnm` 路径稳定化） |
-
-## 深入文档与致谢
+## 深入文档与开源协议
 
 - [可靠通信、权限沙箱与协议规范](docs/communication.md) · [验证矩阵与离线回归记录](docs/verification.md) · [代码结构与维护约定](AGENTS.md)
 - [参与贡献指南](CONTRIBUTING.md) · [安全漏洞私密上报](SECURITY.md) · [版本更新记录](CHANGELOG.md)
-- **致谢与开源协议**：
-  - 本项目基于 MIT 协议的 [mumuxsy/pi-subagents](https://github.com/mumuxsy/pi-subagents) 演进，保留完整上游版权声明（见 [LICENSE](LICENSE)）。
-  - 多服务商只读额度查询协议参考了 [CodexBar](https://github.com/steipete/CodexBar) 与各厂商公开文档，由本项目使用 Node.js 独立实现。
-  - 基于 [MIT License](LICENSE) 开源发布（Copyright © 2026 mumuxsy & shin）。
+- 基于 [MIT License](LICENSE) 开源发布（Copyright © 2026 mumuxsy & shin）。
