@@ -9,7 +9,7 @@
     <img src="https://img.shields.io/badge/Version-2.0.0-19c39a" alt="Version 2.0.0" />
     <img src="https://img.shields.io/badge/Node.js-%3E%3D22.19-339933?logo=nodedotjs&logoColor=white" alt="Node >= 22.19" />
     <img src="https://img.shields.io/badge/MCP_SDK-1.26.0_(27_Tools)-60a5fa" alt="MCP SDK 1.26.0 (27 Tools)" />
-    <img src="https://img.shields.io/badge/Sandbox-Seatbelt_%7C_Bubblewrap-141519" alt="macOS Seatbelt / Linux Bubblewrap" />
+    <img src="https://img.shields.io/badge/Sandbox-Seatbelt_%2B_Bubblewrap-4b5563" alt="macOS Seatbelt / Linux Bubblewrap" />
   </p>
 
   <p>
