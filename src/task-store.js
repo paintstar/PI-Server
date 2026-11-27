@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { atomicWriteJson } from './storage.js';
 
 const terminal = status => ['completed', 'failed', 'cancelled'].includes(status);
-const resultOf = agent => ({ content: [{ type: 'text', text: JSON.stringify(agent) }], structuredContent: { result: agent }, ...(agent.status === 'failed' ? { isError: true } : {}) });
+const resultOf = agent => ({ content: [{ type: 'text', text: JSON.stringify(agent) }], structuredContent: { result: agent }, ...(['failed', 'completed-unverified'].includes(agent.status) ? { isError: true } : {}) });
 /** Persistent MCP Tasks store; task IDs and results survive bridge reconnects. */
 export class FileTaskStore {
   constructor(root, manager) { this.directory = path.join(root, 'tasks'); fs.mkdirSync(this.directory, { recursive: true, mode: 0o700 }); this.manager = manager; }
@@ -36,8 +36,14 @@ export class FileTaskStore {
       if (!active) { status = 'failed'; message = 'Controller restarted; task did not replay. Explicitly recover its saved agent.'; }
       else {
         const value = active.record.status;
-        status = value === 'waiting' ? 'input_required' : value === 'completed' ? 'completed' : value === 'failed' ? 'failed' : ['interrupted', 'closed'].includes(value) ? 'cancelled' : 'working';
-        message = active.record.error;
+        status = value === 'waiting' ? 'input_required'
+          : ['completed', 'completed-verified'].includes(value) ? 'completed'
+          : ['failed', 'completed-unverified'].includes(value) ? 'failed'
+          : ['interrupted', 'closed'].includes(value) ? 'cancelled'
+          : 'working';
+        message = value === 'completed-unverified'
+          ? `Acceptance checks failed (${active.record.verification?.passedCount ?? 0}/${active.record.verification?.totalCount ?? 0} passed)`
+          : active.record.error;
         if (terminal(status)) record.result = resultOf(this.manager.summary(active));
       }
       if (record.task.status !== status) { record.task.status = status; record.task.lastUpdatedAt = new Date().toISOString(); record.task.statusMessage = message; this.save(record); }

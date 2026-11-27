@@ -19,7 +19,12 @@ export function sandboxMode(policy = {}) {
   if (policy.sandboxMode) return modes.has(policy.sandboxMode) ? policy.sandboxMode : 'strict';
   try { const mode = JSON.parse(fs.readFileSync(configFile, 'utf8')).mode; return modes.has(mode) ? mode : 'strict'; } catch { return 'strict'; }
 }
-const privateHome = () => ['.pi', '.codex', '.ssh', '.config/opencode', '.local/share/opencode'].map(value => canonicalPath(path.join(os.homedir(), value)));
+const PRIVATE_HOME_DIRS = ['.pi', '.codex', '.ssh', '.config/opencode', '.local/share/opencode', '.claude', '.gemini', '.aws', '.kube', '.gnupg'];
+const PRIVATE_HOME_FILES = ['.claude.json'];
+const privateHomeDirs = () => PRIVATE_HOME_DIRS.map(value => canonicalPath(path.join(os.homedir(), value)));
+const privateHomeFiles = () => PRIVATE_HOME_FILES.map(value => canonicalPath(path.join(os.homedir(), value)));
+const privateHome = () => [...privateHomeDirs(), ...privateHomeFiles()];
+const privateFileFilter = value => `(literal ${JSON.stringify(canonicalPath(value))})`;
 function gitCommonDir(cwd) {
   try {
     const marker = path.join(cwd, '.git');
@@ -30,10 +35,12 @@ function gitCommonDir(cwd) {
   } catch { return null; }
 }
 export function assertToolPath(value, policy, write = false) {
+  if (write && policy.readOnly) throw new Error('Tool write is disabled by read-only policy');
+  if (!write && policy.allowWorkspaceRead === false) throw new Error('Workspace read is disabled by policy');
   const target = canonicalPath(path.resolve(policy.cwd, value));
   const mode = sandboxMode(policy);
   const dev = mode !== 'strict';
-  const allowed = write ? (dev ? [policy.cwd, policy.tempDir] : policy.ownedPaths.map(value => path.resolve(policy.cwd, value))).map(canonicalPath) : [fs.realpathSync(policy.cwd)];
+  const allowed = write ? (dev ? [policy.cwd, policy.tempDir] : (policy.ownedPaths || []).map(value => path.resolve(policy.cwd, value))).map(canonicalPath) : [fs.realpathSync(policy.cwd)];
   if (mode !== 'bypass' && (write || !dev) && !allowed.some(directory => inside(target, directory))) throw new Error('Tool path is outside the permitted file scope');
   const state = canonicalPath(policy.stateRoot);
   const workspace = fs.realpathSync(policy.cwd);
@@ -61,39 +68,44 @@ export function sandboxProfile(policy) {
     return buildBwrapArgs(policy, '/bin/true', [], {
       canonicalPath,
       mode,
-      privateDirectories: privateHome(),
+      privateDirectories: privateHomeDirs(),
+      privateFiles: privateHomeFiles(),
       gitCommonDir: gitCommonDir(policy.cwd),
     });
   }
   if (process.platform !== 'darwin' || !fs.existsSync('/usr/bin/sandbox-exec')) throw new Error('Strict tool sandbox requires macOS sandbox-exec or Linux/WSL2 bubblewrap (bwrap); unsupported platforms fail closed.');
   const mode = sandboxMode(policy);
   if (mode !== 'strict') return developmentProfile(policy, mode === 'bypass');
-  const read = [policy.cwd, policy.tempDir, path.dirname(path.dirname(process.execPath)), '/usr', '/bin', '/sbin', '/System', '/Library', '/private/etc', '/private/var/db', '/dev', ...(fs.existsSync('/opt/homebrew') ? ['/opt/homebrew'] : [])];
+  const read = [...(policy.allowWorkspaceRead === false ? [] : [policy.cwd]), policy.tempDir, path.dirname(path.dirname(process.execPath)), '/usr', '/bin', '/sbin', '/System', '/Library', '/private/etc', '/private/var/db', '/dev', ...(fs.existsSync('/opt/homebrew') ? ['/opt/homebrew'] : [])];
   const workspace = canonicalPath(policy.cwd);
-  const owned = policy.ownedPaths.map(value => canonicalPath(path.resolve(policy.cwd, value)));
+  const owned = policy.readOnly ? [] : (policy.ownedPaths || []).map(value => canonicalPath(path.resolve(policy.cwd, value)));
   if (owned.some(value => !inside(value, workspace))) throw new Error('Owned path resolves outside the workspace');
   const write = [...owned, policy.tempDir, '/dev/null', '/dev/tty'];
-  const privateDirectories = privateHome();
+  const privateDirectories = privateHomeDirs();
+  const privateFiles = privateHomeFiles();
   return `(version 1) (allow default)
 (deny file-read-data (require-not (require-any (literal "/") ${read.map(filter).join(' ')})))
 (deny file-write* (require-not (require-any ${write.map(filter).join(' ')})))
 ${privateDirectories.map(value => `(deny file-read* ${filter(value)}) (deny file-write* ${filter(value)})`).join('\n')}
+${privateFiles.map(value => `(deny file-read* ${privateFileFilter(value)}) (deny file-write* ${privateFileFilter(value)})`).join('\n')}
 (deny file-read* (require-all ${filter(policy.stateRoot)} (require-not (require-any ${inside(canonicalPath(policy.cwd), canonicalPath(policy.stateRoot)) ? filter(policy.cwd) : ''} ${filter(policy.tempDir)}))))
-(deny file-write* (require-all ${filter(policy.stateRoot)} (require-not (require-any ${inside(canonicalPath(policy.cwd), canonicalPath(policy.stateRoot)) ? filter(policy.cwd) : ''} ${filter(policy.tempDir)}))))
+(deny file-write* (require-all ${filter(policy.stateRoot)} (require-not (require-any ${!policy.readOnly && inside(canonicalPath(policy.cwd), canonicalPath(policy.stateRoot)) ? filter(policy.cwd) : ''} ${filter(policy.tempDir)}))))
 ${policy.allowNetwork ? '' : '(deny network*)'}
 (deny appleevent-send) (deny mach-lookup) (deny process-info*) (deny signal)`;
 }
 function developmentProfile(policy, open = false) {
   const home = os.homedir();
-  const write = [policy.cwd, policy.tempDir, gitCommonDir(policy.cwd), path.join(home, '.cache'), path.join(home, '.local/share/uv'), path.join(home, 'Library/Caches'), '/private/var/folders', '/private/tmp', '/dev']
+  const write = [...(policy.readOnly ? [] : [policy.cwd, gitCommonDir(policy.cwd)]), policy.tempDir, path.join(home, '.cache'), path.join(home, '.local/share/uv'), path.join(home, 'Library/Caches'), '/private/var/folders', '/private/tmp', '/dev']
     .filter(value => value && fs.existsSync(value));
-  const privateDirectories = open ? [] : privateHome();
+  const privateDirectories = open ? [] : privateHomeDirs();
+  const privateFiles = open ? [] : privateHomeFiles();
   const own = inside(canonicalPath(policy.cwd), canonicalPath(policy.stateRoot)) ? filter(policy.cwd) : '';
   return `(version 1) (allow default)
-${open ? '' : `(deny file-write* (require-not (require-any ${write.map(filter).join(' ')})))`}
+${open && !policy.readOnly ? '' : `(deny file-write* (require-not (require-any ${write.map(filter).join(' ')})))`}
 ${privateDirectories.map(value => `(deny file-read* ${filter(value)}) (deny file-write* ${filter(value)})`).join('\n')}
+${privateFiles.map(value => `(deny file-read* ${privateFileFilter(value)}) (deny file-write* ${privateFileFilter(value)})`).join('\n')}
 (deny file-read-data (require-all ${filter(policy.stateRoot)} (require-not (require-any ${own} ${filter(policy.tempDir)}))))
-(deny file-write* (require-all ${filter(policy.stateRoot)} (require-not (require-any ${own} ${filter(policy.tempDir)}))))
+(deny file-write* (require-all ${filter(policy.stateRoot)} (require-not (require-any ${policy.readOnly ? '' : own} ${filter(policy.tempDir)}))))
 ${policy.allowNetwork ? '' : '(deny network*) (allow network* (remote ip "localhost:*")) (allow network* (remote unix-socket))'}
 (deny appleevent-send)`;
 }
@@ -109,7 +121,8 @@ export function runSandboxed(policy, executable, args, { signal, timeout = 60000
     commandArgs = buildBwrapArgs(policy, executable, args, {
       canonicalPath,
       mode: sandboxMode(policy),
-      privateDirectories: privateHome(),
+      privateDirectories: privateHomeDirs(),
+      privateFiles: privateHomeFiles(),
       gitCommonDir: gitCommonDir(policy.cwd),
     });
   } else {
@@ -130,15 +143,31 @@ export function runSandboxed(policy, executable, args, { signal, timeout = 60000
   return new Promise((resolve, reject) => {
     const child = spawn(command, commandArgs, { cwd: policy.cwd, env, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
     children.add(child.pid);
-    const stop = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') reject(error); } };
-    const timer = setTimeout(stop, timeout); signal?.addEventListener('abort', stop, { once: true });
+    let timedOut = false;
+    let settled = false;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      children.delete(child.pid);
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      fn(value);
+    };
+    const killGroup = () => {
+      try { process.kill(-child.pid, 'SIGKILL'); }
+      catch (error) { if (error.code !== 'ESRCH') finish(reject, error); }
+    };
+    const onTimeout = () => { timedOut = true; killGroup(); };
+    const onAbort = () => { killGroup(); };
+    const timer = setTimeout(onTimeout, timeout);
+    signal?.addEventListener('abort', onAbort, { once: true });
     child.stdout.on('data', chunk => { onStdout?.(chunk); onData(chunk); });
     child.stderr.on('data', chunk => { onStderr?.(chunk); onData(chunk); });
-    child.on('error', error => { children.delete(child.pid); clearTimeout(timer); signal?.removeEventListener('abort', stop); reject(error); });
-    child.on('close', (code, termination) => { children.delete(child.pid); clearTimeout(timer); signal?.removeEventListener('abort', stop); resolve({ exitCode: code ?? (termination ? 137 : 1) }); });
-    child.stdin.on('error', error => { if (error.code !== 'EPIPE') reject(error); });
+    child.on('error', error => finish(reject, error));
+    child.on('close', (code, termination) => finish(resolve, { exitCode: code ?? (termination ? 137 : 1), timedOut, signal: termination || null }));
+    child.stdin.on('error', error => { if (error.code !== 'EPIPE') finish(reject, error); });
     child.stdin.end(input);
-    if (signal?.aborted) stop();
+    if (signal?.aborted) onAbort();
   });
 }
 
@@ -149,11 +178,19 @@ else if(operation==='access') fs.accessSync(file);
 else {let value='';process.stdin.setEncoding('utf8');process.stdin.on('data',c=>value+=c);process.stdin.on('end',()=>{fs.mkdirSync(require('path').dirname(file),{recursive:true});fs.writeFileSync(file,value)});}`;
 export async function fileOperation(policy, operation, filename, content, options = {}) {
   const file = assertToolPath(filename, policy, operation === 'write');
+  let createdPlaceholder = false;
   if (process.platform === 'linux' && operation === 'write' && sandboxMode(policy) === 'strict') {
+    const workspace = canonicalPath(policy.cwd);
     const parent = path.dirname(file);
     const owned = policy.ownedPaths.map(value => canonicalPath(path.resolve(policy.cwd, value)));
-    if (owned.some(dir => inside(parent, dir)) && !fs.existsSync(parent)) {
+    const fileOwned = owned.some(entry => inside(file, entry));
+    if (fileOwned && inside(parent, workspace) && !fs.existsSync(parent)) {
       fs.mkdirSync(parent, { recursive: true });
+    }
+    if (owned.includes(file) && !fs.existsSync(file)) {
+      const fd = fs.openSync(file, 'wx', 0o600);
+      fs.closeSync(fd);
+      createdPlaceholder = true;
     }
   }
   const stdout = [];
@@ -165,13 +202,20 @@ export async function fileOperation(policy, operation, filename, content, option
     if (length === 0) return Buffer.alloc(0);
     workerArgs.push(String(length));
   }
-  const result = await runSandboxed(policy, process.execPath, workerArgs, {
-    input: content,
-    onStdout: chunk => stdout.push(chunk),
-    onStderr: chunk => stderr.push(chunk),
-    signal: options.signal,
-  });
+  let result;
+  try {
+    result = await runSandboxed(policy, process.execPath, workerArgs, {
+      input: content,
+      onStdout: chunk => stdout.push(chunk),
+      onStderr: chunk => stderr.push(chunk),
+      signal: options.signal,
+    });
+  } catch (error) {
+    if (createdPlaceholder) try { fs.unlinkSync(file); } catch {}
+    throw error;
+  }
   if (result.exitCode !== 0) {
+    if (createdPlaceholder) try { fs.unlinkSync(file); } catch {}
     const detail = Buffer.concat(stderr).toString('utf8').trim();
     throw new Error(detail ? `Sandboxed ${operation} failed: ${detail.split('\n')[0]}` : `Sandboxed file operation failed or was denied (${result.exitCode})`);
   }

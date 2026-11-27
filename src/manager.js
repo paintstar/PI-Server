@@ -14,6 +14,7 @@ import { sandboxProfile, canonicalPath } from './tool-sandbox.js';
 import { createWorkspace, resolveWorkspaceMode, validateOwnedPaths, pathsOverlap } from './workspace.js';
 import { catalogFilesStamp, enrichModels, fetchPiRawModels, readModelSettings } from './model-settings.js';
 import { isCleanBenchmarkProfile } from './benchmark-profile.js';
+import { buildAgentInstructions, normalizeOrchestration, runAcceptanceChecks, summarizeVerification, validateAcceptanceChecks } from './acceptance.js';
 
 const extension = fileURLToPath(new URL('../extensions/communication.ts', import.meta.url));
 export const maxAgentLimit = 50;
@@ -23,7 +24,7 @@ const textOf = message => (message?.content || []).filter(block => block.type ==
 
 /** Own Pi processes, durable sessions, model changes and events for an independent controller. */
 export class Manager extends EventEmitter {
-  constructor({ root, executable = 'pi', maxAgents = defaultMaxAgents, piAgentDir = process.env.PI_CODING_AGENT_DIR, processFactory = options => new PiProcess(options) }) {
+  constructor({ root, executable = 'pi', maxAgents = defaultMaxAgents, piAgentDir = process.env.PI_CODING_AGENT_DIR, processFactory = options => new PiProcess(options), checkRunner = runAcceptanceChecks }) {
     super();
     if (!Number.isInteger(maxAgents) || maxAgents < 1 || maxAgents > maxAgentLimit) throw new Error(`maxAgents must be an integer from 1 to ${maxAgentLimit}`);
     this.storage = new Storage(root);
@@ -31,6 +32,7 @@ export class Manager extends EventEmitter {
     this.maxAgents = maxAgents;
     this.piAgentDir = piAgentDir;
     this.processFactory = processFactory;
+    this.checkRunner = checkRunner;
     this.owner = randomUUID();
     this.messages = new MessageStore(this.storage);
     this.agents = new Map();
@@ -49,11 +51,12 @@ export class Manager extends EventEmitter {
     const r = agent.record;
     return { id: r.id, name: r.name, status: r.status, model: r.model, thinking: r.thinking, workspace: r.workspace, parentInfo: r.parentInfo,
       policy: r.policy, modelRequests: r.modelRequests, limitReason: r.limitReason, sequence: r.sequence, questionIds: r.questionIds, lastText: r.lastText?.slice(-12000), error: r.error,
-      temporaryModel: r.restoreModel, usage: r.usage, sessionFile: r.sessionFile, createdAt: r.createdAt, updatedAt: r.updatedAt };
+      temporaryModel: r.restoreModel, usage: r.usage, sessionFile: r.sessionFile, createdAt: r.createdAt, updatedAt: r.updatedAt,
+      verification: r.verification || { status: 'none' }, ...(r.acceptanceChecks ? { acceptanceChecks: r.acceptanceChecks } : {}), ...(r.orchestration ? { orchestration: r.orchestration } : {}) };
   }
   event(agent, type, data = {}) {
     const r = agent.record;
-    const event = { agentId: r.id, sequence: ++r.sequence, time: new Date().toISOString(), type, ...data };
+    const event = JSON.parse(JSON.stringify({ agentId: r.id, sequence: ++r.sequence, time: new Date().toISOString(), type, ...data }));
     r.updatedAt = event.time;
     agent.events.push(event);
     if (agent.events.length > 500) agent.events.shift();
@@ -117,21 +120,11 @@ export class Manager extends EventEmitter {
     record.owner = this.owner; record.ownerPid = process.pid;
     return lock;
   }
-  async spawn({ cwd, prompt, provider, model, name, ownedPaths, workspaceMode = 'auto', baseRef, thinking, context = '', parentId, parentInfo, parentSession, antigravitySessionId, opencodeSessionId, policy }) {
+  async spawn({ cwd, prompt, provider, model, name, ownedPaths, workspaceMode = 'auto', baseRef, thinking, context = '', parentId, parentInfo, parentSession, antigravitySessionId, opencodeSessionId, policy, acceptanceChecks, orchestration }) {
     if (!path.isAbsolute(cwd)) throw new Error('cwd must be an absolute directory path');
+    const normalizedChecks = validateAcceptanceChecks(acceptanceChecks);
+    const normalizedOrch = normalizeOrchestration(orchestration);
     this.capacity(); await this.validateModel({ provider, model }); this.capacity();
-    const paths = validateOwnedPaths(ownedPaths);
-    const { resolvedCwd: original, effectiveMode } = resolveWorkspaceMode({ cwd, mode: workspaceMode });
-    if (effectiveMode === 'shared') {
-      for (const a of this.agents.values()) {
-        if (a.record.workspace?.mode === 'shared' && a.rpc && !a.rpc.exited && pathsOverlap(paths.map(p => canonicalPath(path.resolve(original, p))), a.record.ownedPaths.map(p => canonicalPath(path.resolve(a.record.workspace.sourceCwd, p))))) throw new Error('Owned paths overlap another live agent in the shared directory');
-      }
-      for (const saved of this.storage.all()) {
-        if (this.agents.has(saved.id) || saved.workspace?.mode !== 'shared' || !ownerLockAlive(this.storage.directory(saved.id))) continue;
-        if (pathsOverlap(paths.map(p => canonicalPath(path.resolve(original, p))), saved.ownedPaths.map(p => canonicalPath(path.resolve(saved.workspace.cwd, p))))) throw new Error('Owned paths overlap a live agent from an earlier controller');
-      }
-    }
-    const id = randomUUID();
     const settingsDefaults = readModelSettings(this.storage.root).defaults;
     const effectiveThinking = thinking || settingsDefaults.thinking;
     const effectivePolicy = {
@@ -139,6 +132,19 @@ export class Manager extends EventEmitter {
       ...(policy?.allowNetwork === undefined ? { allowNetwork: settingsDefaults.allowNetwork } : {}),
       ...(policy?.sandboxMode === undefined && settingsDefaults.sandboxMode ? { sandboxMode: settingsDefaults.sandboxMode } : {}),
     };
+    const builtPolicy = agentPolicy(effectivePolicy, { provider, model });
+    const paths = validateOwnedPaths(ownedPaths, { readOnly: builtPolicy.readOnly });
+    const { resolvedCwd: original, effectiveMode } = resolveWorkspaceMode({ cwd, mode: workspaceMode });
+    if (effectiveMode === 'shared' && !builtPolicy.readOnly) {
+      for (const a of this.agents.values()) {
+        if (a.record.workspace?.mode === 'shared' && !a.record.policy?.readOnly && a.rpc && !a.rpc.exited && pathsOverlap(paths.map(p => canonicalPath(path.resolve(original, p))), a.record.ownedPaths.map(p => canonicalPath(path.resolve(a.record.workspace.sourceCwd, p))))) throw new Error('Owned paths overlap another live agent in the shared directory');
+      }
+      for (const saved of this.storage.all()) {
+        if (this.agents.has(saved.id) || saved.workspace?.mode !== 'shared' || saved.policy?.readOnly || !ownerLockAlive(this.storage.directory(saved.id))) continue;
+        if (pathsOverlap(paths.map(p => canonicalPath(path.resolve(original, p))), saved.ownedPaths.map(p => canonicalPath(path.resolve(saved.workspace.cwd, p))))) throw new Error('Owned paths overlap a live agent from an earlier controller');
+      }
+    }
+    const id = randomUUID();
     const explicitParent = antigravitySessionId
       ? { kind: 'antigravity', sessionId: antigravitySessionId, cwd: original }
       : opencodeSessionId
@@ -146,13 +152,14 @@ export class Manager extends EventEmitter {
         : parentSession ? { ...parentSession, cwd: parentSession.cwd || original } : null;
     const resolvedParentInfo = normalizeParentInfo(explicitParent, parentInfo);
     const cleanBenchmark = isCleanBenchmarkProfile(context);
-    const record = { id, parentId, parentInfo: resolvedParentInfo, policy: agentPolicy(effectivePolicy, { provider, model }), modelRequests: 0, name: name || id.slice(0, 8), model: { provider, model }, thinking: effectiveThinking, loadSkills: cleanBenchmark ? false : settingsDefaults.loadSkills, loadContextFiles: cleanBenchmark ? false : settingsDefaults.loadContextFiles, ownedPaths: paths, context,
+    const record = { id, parentId, parentInfo: resolvedParentInfo, policy: builtPolicy, modelRequests: 0, name: name || id.slice(0, 8), model: { provider, model }, thinking: effectiveThinking, loadSkills: cleanBenchmark ? false : settingsDefaults.loadSkills, loadContextFiles: cleanBenchmark ? false : settingsDefaults.loadContextFiles, ownedPaths: paths, context,
+      ...(normalizedChecks ? { acceptanceChecks: normalizedChecks } : {}), ...(normalizedOrch ? { orchestration: normalizedOrch } : {}), verification: { status: 'none' },
       status: 'starting', sequence: 0, questionIds: [], createdAt: new Date().toISOString(), usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reportedCost: 0 } };
     const lock = this.claim(record);
     try {
       record.workspace = createWorkspace({ cwd, id, mode: workspaceMode, baseRef, directory: this.storage.directory(id) });
       this.storage.save(record);
-      const agent = { record, lock, events: [], control: Promise.resolve() };
+      const agent = { record, lock, events: [], control: Promise.resolve(), interruptedRun: false };
       this.agents.set(id, agent);
       await this.launch(agent);
       await this.send(id, prompt, 'steer');
@@ -160,6 +167,7 @@ export class Manager extends EventEmitter {
     } catch (error) {
       record.status = 'failed'; record.error = error.message; this.storage.save(record);
       const a = this.agents.get(id); if (a?.rpc) await a.rpc.close();
+      this.agents.delete(id);
       this.release(lock); throw error;
     }
   }
@@ -175,9 +183,10 @@ export class Manager extends EventEmitter {
     r.policy ||= agentPolicy({}, r.model);
     const tempDir = path.join(this.storage.directory(r.id), 'tool-tmp'); fs.mkdirSync(tempDir, { recursive: true, mode: 0o700 });
     const toolPolicy = { ...r.policy, cwd: r.workspace.cwd, ownedPaths: r.ownedPaths, stateRoot: this.storage.root, tempDir };
+    agent.toolPolicy = toolPolicy;
     if (!this.processFactory.testOnly) sandboxProfile(toolPolicy);
     const policyFile = path.join(this.storage.directory(r.id), 'tool-policy.json'); atomicWriteJson(policyFile, toolPolicy);
-    const instructions = `You are an external Pi subagent orchestrated by the parent agent (${r.parentInfo?.kind || 'mcp'}). Your ID: ${r.id}.\nOwned paths: ${r.ownedPaths.join(', ')}. Do not edit siblings' files or revert others' changes. Your directory is ${r.workspace.cwd}. File tools and shell descendants are restricted to the assigned workspace and owned paths. Shell networking is ${r.policy.allowNetwork ? 'enabled' : 'disabled'} by policy.\nUse agent_message(recipient="parent", message=...) for important progress. Use ask_parent for unresolved blocking decisions; its tool result is the parent's answer. Finish with changed files, checks actually run, remaining issues. Never claim tests passed without running them. Do not deploy or send external messages without explicit parent authorization.\nProvided context:\n${r.context}`;
+    const instructions = buildAgentInstructions(r);
     const args = ['--mode', 'rpc', '--offline', '--provider', r.model.provider, '--model', r.model.model, '--thinking', r.thinking,
       '--no-extensions', '--extension', extension, '--extension', fileURLToPath(new URL('../extensions/policy.ts', import.meta.url)), '--append-system-prompt', instructions, '--session-dir', path.join(this.storage.directory(r.id), 'sessions')];
     if (r.loadSkills === false) args.push('--no-skills');
@@ -225,9 +234,30 @@ export class Manager extends EventEmitter {
       clearTimeout(agent.runtimeTimer); r.status = 'finishing';
       this.serial(agent, async () => {
         if (r.restoreModel) await this.restoreModel(agent);
-        r.status = r.limitReason || r.stopReason === 'error' ? 'failed' : r.stopReason === 'aborted' || agent.interrupting ? 'interrupted' : 'completed';
+        const baseStatus = r.limitReason || r.stopReason === 'error' ? 'failed' : r.stopReason === 'aborted' || agent.interrupting || agent.interruptedRun ? 'interrupted' : 'completed';
         if (r.limitReason) r.error = r.limitReason;
-        this.event(agent, 'settled', { status: r.status, text: r.lastText, error: r.error });
+        if (baseStatus === 'completed' && r.acceptanceChecks?.length) {
+          r.verification = { status: 'running', totalCount: r.acceptanceChecks.length, passedCount: 0, failedCount: 0, totalDurationMs: 0, checks: [] };
+          this.event(agent, 'acceptance_started', { totalCount: r.acceptanceChecks.length });
+          const ac = new AbortController(); agent.acceptanceAbort = ac;
+          let result;
+          try { result = await this.checkRunner(r.acceptanceChecks, agent.toolPolicy, { signal: ac.signal }); }
+          finally { if (agent.acceptanceAbort === ac) agent.acceptanceAbort = null; }
+          if (agent.interruptedRun || ac.signal.aborted || result?.aborted) {
+            r.verification = { status: 'skipped', checkedAt: new Date().toISOString(), sandboxBackend: result?.sandboxBackend || null, totalDurationMs: result?.totalDurationMs || 0, passedCount: 0, failedCount: 0, totalCount: r.acceptanceChecks.length, checks: result?.checks || [] };
+            r.status = 'interrupted';
+          } else {
+            r.verification = result;
+            r.status = result.status === 'verified' ? 'completed-verified' : 'completed-unverified';
+            this.event(agent, 'acceptance_completed', summarizeVerification(result));
+          }
+        } else if (r.acceptanceChecks?.length) {
+          r.verification = { status: 'skipped', checkedAt: new Date().toISOString(), totalCount: r.acceptanceChecks.length, passedCount: 0, failedCount: 0, totalDurationMs: 0, checks: [] };
+          r.status = baseStatus;
+        } else {
+          r.status = baseStatus;
+        }
+        this.event(agent, 'settled', { status: r.status, text: r.lastText, error: r.error, ...(r.acceptanceChecks?.length ? { verification: summarizeVerification(r.verification) } : {}) });
       }).catch(error => { r.status = 'failed'; r.error = error.message; this.event(agent, 'control_failed', { error: error.message }); });
     } else if (event.type === 'extension_error') this.event(agent, 'extension_error', { error: event.error || event.message });
   }
@@ -240,6 +270,8 @@ export class Manager extends EventEmitter {
       if (agent.record.limitReason) { this.messages.update(id, messageId, { state: 'denied', reason: agent.record.limitReason }); throw new Error('Agent limit reached; obtain authorization and update its policy before more work.'); }
       const busy = activeStatuses.has(agent.record.status);
       if (!busy) {
+        agent.interruptedRun = false;
+        if (agent.record.acceptanceChecks?.length) agent.record.verification = { status: 'none' };
         agent.record.runStartedAt = Date.now();
         clearTimeout(agent.runtimeTimer);
         agent.runtimeTimer = setTimeout(() => {
@@ -305,6 +337,8 @@ export class Manager extends EventEmitter {
   }
   async interrupt(id) {
     const agent = this.get(id);
+    agent.interruptedRun = true;
+    agent.acceptanceAbort?.abort();
     return this.serial(agent, async () => {
       if (!agent.rpc || agent.rpc.exited) throw new Error('Agent process is not running');
       clearTimeout(agent.runtimeTimer); agent.interrupting = true;
@@ -319,6 +353,8 @@ export class Manager extends EventEmitter {
   }
   async closeAgent(id) {
     const agent = this.get(id);
+    agent.interruptedRun = true;
+    agent.acceptanceAbort?.abort();
     let shutdownError;
     if (activeStatuses.has(agent.record.status)) {
       try { await this.interrupt(id); }
@@ -347,10 +383,10 @@ export class Manager extends EventEmitter {
     if (!record.sessionFile || !fs.existsSync(record.sessionFile)) throw new Error('No saved Pi session is available');
     await this.validateModel(record.model); this.capacity();
     const lock = this.claim(record);
-    const agent = { record, lock, events: this.storage.events(id), control: Promise.resolve() };
+    const agent = { record, lock, events: this.storage.events(id), control: Promise.resolve(), interruptedRun: false };
     this.agents.set(id, agent);
     try { await this.launch(agent); this.event(agent, 'resumed'); return this.summary(agent); }
-    catch (error) { record.status = 'failed'; record.error = error.message; this.storage.save(record); if (agent.rpc) await agent.rpc.close(); this.release(lock); throw error; }
+    catch (error) { record.status = 'failed'; record.error = error.message; this.storage.save(record); if (agent.rpc) await agent.rpc.close(); this.agents.delete(id); this.release(lock); throw error; }
   }
   bindParentInfo(id, parent, parentId) {
     const agent = this.get(id);
@@ -367,7 +403,14 @@ export class Manager extends EventEmitter {
   }
   read(id, afterSequence = 0, limit = 50) {
     const agent = this.get(id);
-    const events = this.storage.events(id, afterSequence, limit);
+    let events;
+    if (afterSequence >= agent.record.sequence) {
+      events = [];
+    } else if (agent.events.length && agent.events[0].sequence <= afterSequence + 1) {
+      events = agent.events.filter(event => event.sequence > afterSequence).slice(0, limit);
+    } else {
+      events = this.storage.events(id, afterSequence, limit);
+    }
     return { agent: this.summary(agent), events, nextSequence: events.at(-1)?.sequence ?? Math.min(afterSequence, agent.record.sequence),
       truncated: events.length > 0 && events[0].sequence > afterSequence + 1 };
   }

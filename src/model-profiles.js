@@ -17,34 +17,54 @@ function formatContextLabel(value, fallback = '标准上下文') {
 
 const MODEL_FAMILY_RULES = [
   {
-    match: (p, m) => p === 'openai-codex' && /^gpt-6-astra/.test(m),
-    thinking: 'xhigh',
-    description: (m, meta) => `非常严谨、逻辑坚持且偏保守的高阶决策模型${m.endsWith('-fast') ? '（Fast 优先通道）' : ''}（${formatContextLabel(meta?.contextWindow)}，配额相对有限）。容易保守或陷入局部最优，但在科研分析、重大架构取舍与核心决策时可有效弥补过度乐观判断、充当严谨“刹车”并提供多角度审视。`,
-  },
-  {
-    match: (p, m) => p === 'openai-codex' && /^gpt-6(\.1)?-sol/.test(m),
-    thinking: 'high',
-    description: (m, meta) => `高效率、成本较低的精确编码模型${m.endsWith('-fast') ? '（Fast 通道）' : ''}（${formatContextLabel(meta?.contextWindow)}），数学与逻辑推理准确度强；适合辅助编码 review、debug 排查与逻辑核验。典型问题是喜欢防御性编程、残留多余兜底和无用文档，派活时须明确约束禁止防御性兜底与多余文档（常规任务仍优先由主代理直接完成）。`,
-  },
-  {
-    match: (p, m) => p === 'openai-codex' && /^gpt-(5\.6|6\.1)-terra/.test(m),
-    thinking: 'medium',
-    description: (m, meta) => `稳健工程实现模型（${formatContextLabel(meta?.contextWindow)}），适合多文件功能改造、接口联调与常规缺陷修复；推理深度与性价比介于 Sol 与 Luna 之间。`,
-  },
-  {
-    match: (p, m) => p === 'openai-codex' && /^gpt-(5\.6|6)-luna/.test(m),
-    thinking: 'low',
-    description: (m, meta) => `轻量高速低成本 GPT 模型${m.endsWith('-fast') ? '（Fast 极速档）' : ''}（${formatContextLabel(meta?.contextWindow)}），适合大范围代码检索、摘要、结构化整理与高频轻量回调验证。`,
-  },
-  {
-    match: (p, m) => p === 'openai-codex' && /^gpt-5\.3-codex-spark/.test(m),
+    match: (p, m) => (p === 'openai-codex' || p === 'openai') && /^gpt-5\.3-codex-spark/.test(m),
     thinking: 'low',
     description: (m, meta) => `纯文本高速代码编辑模型（${formatContextLabel(meta?.contextWindow)}），不支持图片输入；适合单文件快速改动、测试补全和机械重构。`,
   },
   {
-    match: p => p === 'openai-codex',
+    match: (p, m) => (p === 'openai-codex' || p === 'openai') && /^(o3|o4)/.test(m),
+    thinking: 'high',
+    description: (m, meta) => `高深度逻辑与算法推理模型（${formatContextLabel(meta?.contextWindow)}），适合复杂根因排查、架构取舍与严谨验证。`,
+  },
+  {
+    match: (p, m) => (p === 'openai-codex' || p === 'openai') && /(mini|nano)/.test(m),
+    thinking: 'low',
+    description: (m, meta) => `轻量高速低成本 GPT 模型（${formatContextLabel(meta?.contextWindow)}），适合大范围代码检索、摘要整理与高频轻量检查。`,
+  },
+  {
+    match: (p, m) => (p === 'openai-codex' || p === 'openai') && /(pro|codex)/.test(m),
+    thinking: 'high',
+    description: (m, meta) => `主力多模态编码与审查模型${m.endsWith('-fast') ? '（Fast 优先通道）' : ''}（${formatContextLabel(meta?.contextWindow)}），适合跨文件重构、深度 Code Review 与系统设计。`,
+  },
+  {
+    match: p => p === 'openai-codex' || p === 'openai',
     thinking: 'medium',
-    description: (m, meta) => `通用 GPT Codex 多模态编码模型（${formatContextLabel(meta?.contextWindow)}），支持文本与图片输入，可胜任常规全栈开发与脚本验证。`,
+    description: (m, meta) => `通用 GPT 多模态编码模型${m.endsWith('-fast') ? '（Fast 通道）' : ''}（${formatContextLabel(meta?.contextWindow)}），支持文本与图片输入，可胜任全栈开发与脚本验证。`,
+  },
+  {
+    match: (p, m) => p === 'anthropic' && /opus/i.test(m),
+    thinking: 'high',
+    description: (m, meta) => `Claude Opus 高阶推理与架构审查模型（${formatContextLabel(meta?.contextWindow, '200K 上下文')}），适合复杂系统设计、严谨交叉审查与高风险改动把关。`,
+  },
+  {
+    match: (p, m) => p === 'anthropic' && /haiku/i.test(m),
+    thinking: 'low',
+    description: (m, meta) => `Claude Haiku 高速低成本模型（${formatContextLabel(meta?.contextWindow, '200K 上下文')}），适合快速文件检索、轻量摘要与高频巡查。`,
+  },
+  {
+    match: p => p === 'anthropic',
+    thinking: 'medium',
+    description: (m, meta) => `Claude Sonnet 均衡编码主力模型（${formatContextLabel(meta?.contextWindow, '200K 上下文')}），擅长多文件工程实现、精准编辑与代码审查。`,
+  },
+  {
+    match: (p, m) => (p === 'google' || p === 'gemini') && /flash/i.test(m),
+    thinking: 'low',
+    description: (m, meta) => `Gemini Flash 超长上下文高速多模态模型（${formatContextLabel(meta?.contextWindow, '1M 上下文')}），适合大仓库检索、日志摘要与低延迟辅助。`,
+  },
+  {
+    match: p => p === 'google' || p === 'gemini',
+    thinking: 'high',
+    description: (m, meta) => `Gemini Pro 长上下文深度推理与多模态模型（${formatContextLabel(meta?.contextWindow, '1M 上下文')}），适合全仓库全局分析、架构设计与跨模块排查。`,
   },
   {
     match: (p, m) => (p === 'zhipu' || p === 'zai') && /highspeed/.test(m),

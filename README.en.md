@@ -1,178 +1,162 @@
 <div align="center">
-  <img src="docs/assets/logo.svg" width="88" height="88" alt="Pi Server Logo" />
+  <img src="docs/assets/logo.svg" width="92" height="92" alt="Pi Server Logo" />
   <h1>Pi Server</h1>
-  <p><strong>Multi-Model Subagent Orchestration MCP & Real-Time Local Console for Antigravity, Claude Code, Codex, and OpenCode</strong></p>
+  <p><strong>Orchestrate Multi-Model Councils, Fail-Closed Cross-Reviews, and Sandboxed Mechanical Acceptance Across Four AI Coding Hosts</strong></p>
 
   <p>
     <a href="https://github.com/paintstar/PI-Server/actions/workflows/ci.yml"><img src="https://github.com/paintstar/PI-Server/actions/workflows/ci.yml/badge.svg" alt="CI Status" /></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License" /></a>
+    <img src="https://img.shields.io/badge/Version-2.0.0-19c39a" alt="Version 2.0.0" />
     <img src="https://img.shields.io/badge/Node.js-%3E%3D22.19-339933?logo=nodedotjs&logoColor=white" alt="Node >= 22.19" />
-    <img src="https://img.shields.io/badge/MCP_SDK-1.26.0_(24_Tools)-e27448" alt="MCP SDK 1.26.0" />
-    <img src="https://img.shields.io/badge/Sandbox-Seatbelt_%7C_Bubblewrap-171614" alt="macOS Seatbelt / Linux Bubblewrap" />
+    <img src="https://img.shields.io/badge/MCP_SDK-1.26.0_(27_Tools)-60a5fa" alt="MCP SDK 1.26.0 (27 Tools)" />
+    <img src="https://img.shields.io/badge/Sandbox-Seatbelt_%7C_Bubblewrap-141519" alt="macOS Seatbelt / Linux Bubblewrap" />
   </p>
 
   <p>
-    <a href="README.md">简体中文</a> · <strong>English</strong> · <a href="#quick-start">Quick Start</a> · <a href="#console-walkthrough">Screenshots</a> · <a href="#mcp-tool-reference-24-tools">MCP Tools</a> · <a href="docs/communication.md">Protocol & Sandbox</a>
+    <a href="README.md">简体中文</a> · <strong>English</strong> · <a href="#60-second-quick-start">Quick Start</a> · <a href="#why-pi-server-v20">Why v2.0</a> · <a href="#engineering-highlights--source-map">Engineering Depth</a> · <a href="#console-walkthrough">Screenshots</a> · <a href="docs/communication.md">Protocol Spec</a>
   </p>
 </div>
 
 <p align="center">
-  <img src="docs/assets/dashboard-overview.png" width="100%" alt="Pi Server Live Console Overview" />
+  <img src="docs/assets/dashboard-overview.png" width="100%" alt="Pi Server Console Overview" />
 </p>
 
 ---
 
-**Pi Server** wraps your local [Pi Coding Agent](https://pi.dev) runtime into a host-agnostic Model Context Protocol (MCP) orchestration server paired with a dependency-free real-time web console (**Pi Dispatch Console** at `http://127.0.0.1:3141/`). Your primary agent decomposes work, selects models from structured capability profiles, and verifies results, while isolated Pi subagents execute tasks in dedicated Git worktrees under OS-level sandboxing (macOS Seatbelt / Linux & WSL2 `bubblewrap`)—with durable disconnect recovery, blocking parent Q&A, and native wake-up hooks.
+**Pi Server v2.0** wraps your local [Pi Coding Agent](https://pi.dev) runtime into a host-agnostic Model Context Protocol (MCP) orchestration platform for **Google Antigravity, Claude Code, OpenAI Codex, and OpenCode**, paired with a zero-framework real-time console (**Pi Server Console** at `http://127.0.0.1:3141/`) and a unified `pi-server` CLI.
 
-## Key Highlights
+Instead of relying on prompt discipline alone, Pi Server v2.0 gives your primary coding agent **high-level multi-model collaboration primitives (`consult`, `council`, `cross_review`)** and **sandboxed mechanical acceptance gates (`acceptanceChecks`)**. Workers execute in isolated Git worktrees under OS-level sandboxing (macOS Seatbelt / Linux & WSL2 `bubblewrap`), backed by a detached Unix-socket controller, blocking parent Q&A, and cross-host monotonic wake-up cursors.
 
-- **Host-Agnostic Across Four Major AI IDEs/CLIs**: First-class installer and wake-up integration for **Google Antigravity** (bundled plugin, rules, skill, and `PreInvocation` / `Stop` hooks), **Claude Code** (`claude/channel` notifications and background event watcher), **OpenAI Codex** (`codex queue` thread delivery), and **OpenCode** (`opencode.jsonc` `mcp.servers` registration, bundled `SKILL.md`, session binding, background watcher, and opt-in CLI session wake-ups).
-- **Detached Unix-Socket Controller**: Subagent processes and pending questions live inside an independent background daemon (`src/controller.js`). Closing or restarting your host chat never kills running Pi workers—reconnect anytime with `resume_agent`.
-- **Durable Two-Way Messaging & Blocking `ask_parent`**: Subagents report milestones via `agent_message`, coordinate with sibling workers, or pause on ambiguity with `ask_parent` until explicitly answered via `reply_question`, backed by idempotent `requestId` / `messageId` receipts.
-- **Real-Time Three-Pane Web Console (`127.0.0.1:3141`)**: Groups children by parent host session, streams live token-by-token reasoning and collapsible tool traces (`live.json` + SSE), visualizes 1M context window composition and `tok/s` throughput, renders read-only inline Git worktree diffs, and syncs session titles, notes, pins, and archives live with `organize_agents`.
-- **Model Capability Profiles & Secret-Safe Settings Center**: Manage provider enablement, masked API keys, 1-click local Codex OAuth sync, 1M context window overrides, recommended thinking levels, and model capability descriptions from the UI (`0600` atomic backups before touching `~/.pi/agent/auth.json` or `models.json`).
-- **Kernel-Enforced Cross-Platform Sandboxing (macOS Seatbelt / Linux & WSL2 `bubblewrap`)**: Restricts file writes to declared `ownedPaths` or isolated Git `worktree` branches while blocking access to `~/.pi`, `~/.codex`, `~/.ssh`, `~/.config/opencode`, `~/.local/share/opencode`, and controller state directories in `strict` and `dev` modes.
-- **Read-Only Multi-Provider Quota Inspector**: Built-in `get_quota` queries plan windows and balances directly using local Pi credentials across Codex, Zhipu GLM / Z.ai, MiniMax Token Plan, DeepSeek, and OpenCode Go without mutating auth files or exposing account identities.
+## Why Pi Server v2.0?
+
+| Capability | Typical Multi-Agent Scripts / v1.x Primitives | **Pi Server v2.0** |
+| --- | --- | --- |
+| **Multi-Model Primitives** | 4–6 manual `spawn/wait/read/close` calls per opinion; no pre-flight budget check | Built-in **`consult`** (one-shot second opinion), **`council`** (2–4 parallel models + deterministic consensus/disagreement/confidence synthesis + `minQuorum` partial fallback), and **`cross_review`** (untracked-aware diff audit with fail-closed verdicts), all supporting **`dryRun`** and **`budgetCapUsd`** |
+| **Mechanical Verification** | Turn stop = `completed`; correctness relies on prose claims | **5-tier status semantics + `acceptanceChecks`**: commands run automatically inside the worker's OS sandbox & worktree after settle, separating `completed-verified` vs `completed-unverified`, auto-revalidating after fixes, and mapping failures to MCP Task `failed` |
+| **Dual-Platform Kernel Sandbox** | Prompt-only guardrails or macOS-only isolation | **macOS Seatbelt + Linux/WSL2 `bubblewrap` (`bwrap`)**: `strict`/`dev`/`bypass` tiers + `readOnly`/`nonInteractive` network-disabled policies; masks `~/.pi`, `~/.codex`, `~/.claude(.json)`, `~/.gemini`, `~/.config/opencode`, `~/.ssh`, `~/.aws`, `~/.kube`, `~/.gnupg` |
+| **Four-Host Native Wake-Ups** | Locked to one IDE; background workers finish silently after parent turn ends | **Install once across 4 hosts**: Antigravity plugin/hooks, Claude Code channel, Codex thread queue, OpenCode JSONC+Skill+CLI wake — deduplicated via shared monotonic cursors |
+| **Console & Productized CLI** | Heavy SPA builds or ad-hoc npm scripts; `fnm` ephemeral paths break MCP configs | **Zero-framework ES module console** (shared single-watcher SSE + council grid + review-to-diff links + acceptance trace) and unified **`pi-server` CLI** (`doctor` 8-point probe, `install --dry-run`, `fnm_multishells` symlink stabilization, headless `ask`) |
+
+## 60-Second Quick Start
+
+### Prerequisites
+
+- **OS**: macOS (built-in `/usr/bin/sandbox-exec`) or Linux / Windows WSL2 (`sudo apt-get install -y bubblewrap`)
+- **Node.js**: `>= 22.19.0` · **Pi CLI**: `>= 1.0.2` · **Git**
+- **Host Client**: Antigravity, Claude Code, Codex, or OpenCode (or headless terminal usage via `pi-server ask`)
+
+### Install, Diagnose, and Launch
+
+```bash
+git clone https://github.com/paintstar/PI-Server.git
+cd PI-Server
+
+# 1. Install locked dependencies, link CLI, and run offline verification suite (zero model cost)
+npm ci --ignore-scripts && npm link
+npm run check && npm test
+
+# 2. Run 8-point runtime, sandbox probe, and host config diagnostics
+pi-server doctor
+
+# 3. Preview and register installed hosts, then open the local console
+pi-server install --dry-run
+pi-server install
+pi-server dashboard --open
+```
+
+> Legacy `npm run install:*` / `uninstall:*` scripts remain supported. Use `pi-server ask <provider/model> "<question>" --dry-run` for headless terminal or CI consultations over the detached controller.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  subgraph Hosts["Host Primary Agents (MCP Clients)"]
-    AGY["Google Antigravity\n(MCP + Hooks + Watcher)"]
+  subgraph Hosts["Four AI Coding Hosts & Headless CLI"]
+    AGY["Google Antigravity\n(Plugin + Hooks + Watcher)"]
     CC["Claude Code\n(MCP + Channel / Watcher)"]
     CDX["OpenAI Codex\n(MCP + Thread Queue)"]
     OC["OpenCode\n(MCP + Skill + Watcher/CLI)"]
+    CLI["pi-server CLI\n(doctor / install / ask)"]
   end
 
-  subgraph Bridge["MCP Bridge & Wake-Up Layer"]
-    SRV["src/server.js\n(24 MCP Tools / Tasks / Resources)"]
-    CB["src/callbacks.js\n(Monotonic Cursor Deduplication)"]
+  subgraph Bridge["MCP Bridge & v2.0 Orchestration Layer"]
+    SRV["src/server.js (27 Tools)\nTasks / Resources / Progress"]
+    ORCH["src/consult · council · cross-review\nBudget Preflight / Quorum / Fail-Closed"]
+    CB["src/callbacks.js\nMonotonic Cursor Wake-Ups"]
   end
 
-  subgraph Core["Detached Daemon Layer (127.0.0.1 / Unix Socket)"]
-    CTRL["src/controller.js & manager.js\n(Session Lifecycle / Q&A / Policy Preflight)"]
-    WEB["Pi Console (Port 3141)\n(SSE Push / Masked Settings Center)"]
+  subgraph Core["Detached Daemon & Acceptance Gate (Unix Socket)"]
+    CTRL["src/controller.js & manager.js\nDisconnect Survival / Blocking Q&A"]
+    ACC["src/acceptance.js\nSandboxed Acceptance (verified/unverified)"]
+    WEB["Pi Server Console (Port 3141)\nShared SSE / Council Grid / Review Links"]
   end
 
-  subgraph Workers["Sandboxed Execution (Seatbelt / Bubblewrap)"]
-    PI1["Pi Subagent A\n(Isolated Git Worktree)"]
-    PI2["Pi Subagent B\n(Scoped ownedPaths)"]
+  subgraph Workers["Kernel-Sandboxed Execution (Seatbelt / Bubblewrap)"]
+    PI1["Implementation Worker\n(Isolated Git Worktree + ownedPaths)"]
+    PI2["Read-Only Council / Reviewer\n(readOnly + nonInteractive + No-Net)"]
   end
 
   AGY <--> SRV
   CC <--> SRV
   CDX <--> SRV
   OC <--> SRV
+  CLI <--> CTRL
+  SRV <--> ORCH
   SRV <--> CTRL
-  CB <--> AGY
-  CB <--> CC
-  CB <--> CDX
-  CB <--> OC
+  ORCH <--> CTRL
+  CTRL --> ACC
   CTRL --> CB
-  CTRL <--> PI1
-  CTRL <--> PI2
-  WEB -. "Read-Only Snapshots / SSE / Same-Origin Settings" .-> CTRL
+  CB -.-> AGY & CC & CDX & OC
+  CTRL <--> PI1 & PI2
+  WEB -. "Read-Only Snapshots / runs/*.json / Shared SSE" .-> CTRL
 ```
+
+## Engineering Highlights & Source Map
+
+- **Detached Unix-Socket Daemon & Safe Hot-Upgrade** ([src/controller.js](src/controller.js) · [src/controller-client.js](src/controller-client.js)): Survives MCP disconnects without dropping active workers or blocking questions; preserves bound `parentInfo` across reconnects and hot-replaces stale daemons only when `liveProcesses === 0 && activeParents === 0 && inflightOps === 0`.
+- **Deadlock-Free Mechanical Acceptance Loop** ([src/acceptance.js](src/acceptance.js) · [src/manager.js](src/manager.js) · [src/task-store.js](src/task-store.js)): Executes `acceptanceChecks` inside the worker's exact `toolPolicy` sandbox with bounded 8KB sliding output capture and a 300s batch cap; aborts acceptance process trees synchronously *before* entering `serial()` on `interrupt`/`closeAgent`; maps `completed-unverified` to MCP Task `failed` (`isError: true`).
+- **Dual-Platform Kernel Sandboxing & Concurrent Read-Only Workers** ([src/tool-sandbox.js](src/tool-sandbox.js) · [src/linux-sandbox.js](src/linux-sandbox.js) · [extensions/policy.ts](extensions/policy.ts)): Enforces Seatbelt and `bubblewrap` isolation across `strict`/`dev`/`bypass` plus `readOnly`/`nonInteractive` modes (binding regular credential files like `~/.claude.json` to `/dev/null` under `bwrap` to avoid `ENOTDIR`), allowing parallel multi-model councils on dirty repositories with zero path overlap conflicts.
+- **Zero-Framework Console with Shared SSE Broadcaster** ([src/dashboard.js](src/dashboard.js) · [src/dashboard-sse.js](src/dashboard-sse.js) · [dashboard/collab-views.js](dashboard/collab-views.js)): Strict CSP (`default-src 'self'`), custom DOM morphing, `mtimeMs` snapshot caching, and automated test guardrails enforcing `<500`/`<450` line limits and zero leading comments on modular files.
+- **Ephemeral `fnm` Path Stabilization & 8-Point Diagnostics** ([src/bin-resolve.js](src/bin-resolve.js) · [bin/pi-server.js](bin/pi-server.js)): Stabilizes `fnm_multishells` symlink prefixes without dereferencing `bin/pi` into `cli.js`, filters login-shell MOTD noise, and probes real OS sandbox execution in `pi-server doctor`.
 
 ## Console Walkthrough
 
 ### 1. Context Window Telemetry & Growth Curve
-Inspect per-request prompt occupancy (input + cache reads/writes), system prompt section breakdowns, and multi-turn growth against up to 1M-token windows.
-
 <p align="center">
   <img src="docs/assets/dashboard-context.png" width="100%" alt="Context Telemetry and Growth Chart" />
 </p>
 
-### 2. Read-Only Inline Git Worktree Diffs
-Review exact file changes against each subagent's base commit directly inside the right-hand inspector or programmatically via `get_agent_changes` before merging.
-
+### 2. Read-Only Inline Git Worktree Diffs & Cross-Review Findings
 <p align="center">
   <img src="docs/assets/dashboard-changes.png" width="100%" alt="Inline Git Worktree Diff Inspector" />
 </p>
 
-### 3. Model Profiles, 1M Context Overrides & Masked Credentials
-Configure providers, sync local Codex OAuth tokens, adjust context windows, and author selection guidance read by parent agents via `get_model_profiles`—without ever exposing raw keys to the browser or MCP responses.
-
+### 3. Model Profiles, Four-Host Matrix & Masked Credentials
 <p align="center">
   <img src="docs/assets/dashboard-settings.png" width="100%" alt="Model Profiles and Settings Modal" />
 </p>
 
-## Quick Start
+## MCP Tool Reference (27 Tools)
 
-### Prerequisites
-
-- **OS**: macOS (built-in `/usr/bin/sandbox-exec`) or Linux / Windows WSL2 (`sudo apt-get install -y bubblewrap`)
-- **Node.js**: `>= 22.19.0`
-- **Pi CLI**: `>= 1.0.2` (installed on `PATH` with at least one authenticated model provider)
-- **Host Client**: Google Antigravity, Claude Code, OpenAI Codex, or OpenCode
-
-### Installation
-
-```bash
-git clone https://github.com/paintstar/PI-Server.git
-cd PI-Server
-
-# 1. Install locked dependencies and run offline syntax + 100 sandbox/protocol tests
-npm ci --ignore-scripts
-npm run check
-npm test
-
-# 2. Register pi-server across installed Antigravity, Claude Code, Codex, and OpenCode clients
-npm run install:all
-```
-
-Target individual hosts or remove integrations cleanly at any time (existing client configs are backed up with `0600` permissions under `.agents/records/config-backups/`):
-
-```bash
-npm run install:antigravity   # Builds & validates ~/.gemini/config/plugins/pi-server (--strict)
-npm run install:claude        # Registers user-scope stdio MCP in ~/.claude.json
-npm run install:codex         # Registers global MCP server in ~/.codex/config.toml
-npm run install:opencode      # Registers local MCP in ~/.config/opencode/opencode.jsonc & installs SKILL.md
-
-npm run uninstall:antigravity
-npm run uninstall:claude
-npm run uninstall:codex
-npm run uninstall:opencode
-```
-
-Launch or attach to the local web console manually anytime:
-
-```bash
-npm run dashboard
-# Open http://127.0.0.1:3141/
-```
-
-## Host Wake-Up & Session Binding
-
-| Host | Session Binding | Asynchronous Wake-Up Mechanism |
-| --- | --- | --- |
-| **Google Antigravity** | Pass `antigravitySessionId` on `spawn_agent` or call `bind_session` | Bundled `PreInvocation` and `Stop` hooks inject undelivered events and guard against premature turn exit; pair with `mustWait.antigravityBackgroundCommand` (`node scripts/wait-events.js --session <id>`) for instant reactive wakeups, deduplicated via `antigravityDeliveredSeq`. |
-| **Claude Code** | Auto-detected via `CLAUDE_CODE_SESSION_ID` | Emits `notifications/claude/channel` when started with `--dangerously-load-development-channels server:pi-server`, or wakes any session via background `npm run wait-events -- --agent <id>`. |
-| **OpenAI Codex** | Pass `callback.codexThreadId` from `echo $CODEX_THREAD_ID` | Enqueues settle, question, failure, and limit events directly into the parent thread via `codex queue --thread <id>`. |
-| **OpenCode** | Pass `opencodeSessionId` (or `parentSession: { kind: "opencode", sessionId }`), or call `bind_session(kind="opencode")` | Detects the `opencode` MCP client automatically, installs `~/.config/opencode/skills/pi-server/SKILL.md`, and supports `wait-events.js --session <id>` plus opt-in `opencodeCliWake` (`opencode run --session <id>`), deduplicated via the shared monotonic cursor. |
-
-## MCP Tool Reference (24 Tools)
-
-- **Lifecycle & Workspace (10)**: `spawn_agent`, `wait_agent`, `read_agent`, `send_message`, `set_agent_model`, `interrupt_agent`, `close_agent`, `resume_agent`, `list_agents`, `organize_agents`
+- **High-Level Collaboration (v2.0, 3)**: `consult`, `council`, `cross_review`
+- **Lifecycle & Workspace (10)**: `spawn_agent` (with `acceptanceChecks`), `wait_agent`, `read_agent`, `send_message`, `set_agent_model`, `interrupt_agent`, `close_agent`, `resume_agent`, `list_agents`, `organize_agents`
 - **Model Profiles, Health & Quota (4)**: `get_model_profiles`, `list_models`, `get_quota`, `get_subagent_health`
-- **Durable Q&A, Callbacks & Diff Review (6)**: `reply_question`, `read_messages`, `ack_messages`, `bind_session`, `set_agent_callback`, `get_agent_changes`
+- **Durable Q&A, Callbacks & Diff Review (6)**: `reply_question`, `read_messages`, `ack_messages`, `bind_session`, `set_agent_callback`, `get_agent_changes` (untracked-aware)
 - **Policy Governance & Standard MCP Tasks (4)**: `update_agent_policy`, `get_client_capabilities`, `run_agent_task`, `resume_task`
 
-## Sandbox Tiers & Benchmark Mode
+## Evolution Overview (v1.7 Upstream Baseline → v2.0 Original Engineering)
 
-- **`strict` (Default)**: Reads workspace and system runtime files only; writes restricted to `ownedPaths` and private temp directories; hides `~/.pi`, `~/.codex`, `~/.ssh`, and controller state.
-- **`dev`**: Enables full worktree writes, local package caches (`~/.cache`, `~/.local/share/uv`, `~/Library/Caches`), and test/git execution while continuing to block credential and controller state directories.
-- **`bypass`**: Grants full filesystem access (including credential directories) while still isolating controller state tokens; use only for trusted local tasks.
-- **Non-Cached Token Accounting**: `policy.maxTotalTokens` tracks uncached consumption (`input + output + cacheWrite`) rather than re-counting cached prompt prefixes (`cacheRead`) on every tool turn.
-- **Clean Benchmark Profile**: Include a standalone line `BENCHMARK_PROMPT_PROFILE=clean` inside `spawn_agent.context` to strip inherited global/project `AGENTS.md` and skills while preserving core coding tools and sandbox enforcement for controlled model evaluations.
+Pi Server evolved from the MIT-licensed [mumuxsy/pi-subagents](https://github.com/mumuxsy/pi-subagents) (`v1.7.0`). Below is the clear boundary between the upstream foundation and original **Pi Server v2.0 (`shin`)** engineering:
 
-## Documentation & Governance
+| Area | Upstream v1.7.0 Baseline | **Pi Server v2.0 Original Engineering** |
+| --- | --- | --- |
+| Hosts & OS | 3 hosts (AGY/Claude/Codex), macOS Seatbelt only | **OpenCode 4th host** (comment-preserving JSONC + Skill + unified cursor wake) & **Linux/WSL2 `bubblewrap` backend** + dual-OS CI |
+| Multi-Model Layer | 24 low-level orchestration primitives | **`consult` / `council` / `cross_review`**, read-only/non-interactive sandbox policies, `dryRun` cost/capacity preflight, fail-closed review verdicts |
+| Acceptance Gate | Turn-stop `completed` only | Sandboxed **`acceptanceChecks`**, `completed-verified` / `completed-unverified` 5-tier states, deadlock-free abort, auto-reverify on fix |
+| Backend Hardening | Chunked UTF-8 risk, untracked diff blind spot, per-SSE watcher polling | 8 hardening fixes (`Buffer.concat` + 512KB, full 4-host + cloud credential masking, untracked diff generation, strict hot-upgrade, in-memory event cache, shared SSE broadcaster) |
+| Console & CLI | 3-pane viewer + npm scripts | Zero-framework v2.0 views (council grid, review-to-diff jump, acceptance trace, 4-host×sandbox matrix), new 4-host bus SVG logo, unified **`pi-server` CLI** (`doctor` / `ask` / `fnm` stabilization) |
 
-- [Reliable Communication, Sandbox & Protocol Spec (中文)](docs/communication.md)
-- [Verification Matrix & 100-Test Suite Summary (中文)](docs/verification.md)
-- [Contributing Guide](CONTRIBUTING.md) · [Security Policy](SECURITY.md) · [Changelog](CHANGELOG.md)
+## Documentation, Attribution & License
 
-## License
-
-Released under the [MIT License](LICENSE).
+- [Protocol, Sandbox & Reliability Spec (中文)](docs/communication.md) · [Verification Matrix (中文)](docs/verification.md) · [Contributing Guide](CONTRIBUTING.md) · [Security Policy](SECURITY.md) · [Changelog](CHANGELOG.md)
+- **Credits**: Evolved from [mumuxsy/pi-subagents](https://github.com/mumuxsy/pi-subagents) (MIT) with full original copyright preserved in [LICENSE](LICENSE). Read-only provider quota formats reference [CodexBar](https://github.com/steipete/CodexBar) and official provider APIs, independently implemented in Node.js.
+- Released under the [MIT License](LICENSE) (`Copyright (c) 2026 mumuxsy`, `Copyright (c) 2026 shin`).

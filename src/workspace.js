@@ -2,8 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
-export function validateOwnedPaths(paths) {
-  if (!paths.length) throw new Error('Declare at least one owned path for development work');
+export function validateOwnedPaths(paths, { readOnly = false } = {}) {
+  if (readOnly && (!paths || !paths.length)) return [];
+  if (!Array.isArray(paths) || !paths.length) throw new Error('Declare at least one owned path for development work');
   return paths.map(value => {
     if (path.isAbsolute(value) || value.split(/[\\/]/).includes('..') || !value.trim()) throw new Error('Owned paths must be relative without ..');
     return value.replace(/\\/g, '/').replace(/\/$/, '');

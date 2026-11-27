@@ -31,7 +31,7 @@ export function renderOverview(state) {
     el('span', { title: '工作中会话最近一次请求的输出速度之和' }, '速度', el('b', { text: combinedSpeed(active) })),
   );
   const waiting = counts.get('waiting') || 0;
-  document.title = waiting ? `(${waiting} 待答复) Pi 调度台` : 'Pi 调度台';
+  document.title = waiting ? `(${waiting} 待答复) Pi Server · 调度台` : 'Pi Server · 调度台';
 }
 
 const commonDir = list => {
@@ -119,6 +119,8 @@ function indicator(a) {
   if (busyStatuses.has(a.status)) return el('span', { class: 'spin', title: labels[a.status] });
   if (a.status === 'waiting') return el('span', { class: 'dot waiting', title: '等待答复' });
   if (a.status === 'failed' || a.status === 'disconnected') return el('span', { class: 'bang', title: labels[a.status] });
+  if (a.status === 'completed-unverified') return el('span', { class: 'bang warn', title: '验收未通过' });
+  if (a.status === 'completed-verified') return glyph(paths.shield, 'check verified');
   if (a.status === 'completed') return glyph(paths.check, 'check');
   if (a.status === 'closed') return null;
   return el('span', { class: 'ring-off', title: labels[a.status] || a.status });
@@ -127,7 +129,7 @@ function indicator(a) {
 export function visibleAgents(state) {
   const query = ($('#search')?.value || '').trim().toLowerCase();
   const filter = filters.find(f => f.key === state.filter) || filters[0];
-  return state.agents.filter(a => (state.filter === 'all' && query ? true : filter.match(a.status, a)) && (!query || `${a.name} ${a.rawName || ''} ${a.note || ''} ${modelName(a)} ${a.cwd} ${a.sourceCwd} ${a.id} ${agentSessionId(a) || ''} ${a.parentInfo?.cwd || ''}`.toLowerCase().includes(query)));
+  return state.agents.filter(a => (state.filter === 'all' && query ? true : filter.match(a.status, a)) && (!query || `${a.name} ${a.rawName || ''} ${a.note || ''} ${modelName(a)} ${a.cwd} ${a.sourceCwd} ${a.id} ${agentSessionId(a) || ''} ${a.parentInfo?.cwd || ''} ${a.status} ${a.verification?.status || ''} ${a.orchestration?.kind || ''}`.toLowerCase().includes(query)));
 }
 
 export function renderChips(state, onPick) {
@@ -173,6 +175,7 @@ function row(a, state, handlers) {
   el('span', { class: 'ind' }, indicator(a)),
   a.pinned ? glyph(paths.pin, 'pin-ico') : null,
   el('span', { class: 'name', text: a.name || a.id.slice(0, 8) }),
+  a.orchestration?.kind ? el('span', { class: 'row-kind', text: a.orchestration.kind === 'cross_review' ? 'review' : a.orchestration.kind }) : null,
   a.note ? glyph(paths.note, 'note-ico') : null,
   a.watcherActive ? el('span', { class: 'watch-dot', title: '正在监听回调事件' }) : null,
   a.movedTo ? glyph(paths.move, 'moved') : null,
@@ -208,7 +211,7 @@ function listKey(state) {
     [...state.showClosed],
     state.groupNames,
     state.selected,
-    state.agents.map(a => [a.id, a.status, a.name, a.title, a.note, a.pinned, a.archived, a.movedTo, a.marked, a.watcherActive, a.parentId, agentSessionId(a)]),
+    state.agents.map(a => [a.id, a.status, a.name, a.title, a.note, a.pinned, a.archived, a.movedTo, a.marked, a.watcherActive, a.parentId, agentSessionId(a), a.verification?.status, a.orchestration?.kind]),
   ]);
 }
 
@@ -229,7 +232,7 @@ export function renderList(state, handlers, force = false) {
 
   for (const g of groups) {
     const open = searching || !state.collapsed.has(g.key);
-    const fail = g.agents.filter(a => a.status === 'failed' || a.status === 'disconnected').length;
+    const fail = g.agents.filter(a => a.status === 'failed' || a.status === 'disconnected' || a.status === 'completed-unverified').length;
     const wait = g.agents.filter(a => a.status === 'waiting').length;
     const busy = g.agents.filter(a => busyStatuses.has(a.status)).length;
     const head = el('button', {

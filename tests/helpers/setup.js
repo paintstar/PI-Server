@@ -21,7 +21,7 @@ export async function settled(manager, id, timeout = 3000) {
   const end = Date.now() + timeout;
   while (Date.now() < end) {
     const state = manager.read(id);
-    if (['completed', 'failed', 'interrupted', 'closed'].includes(state.agent.status)) return state.agent;
+    if (['completed', 'completed-verified', 'completed-unverified', 'failed', 'interrupted', 'closed'].includes(state.agent.status)) return state.agent;
     await manager.wait([id], { [id]: state.nextSequence }, 100);
   }
   throw new Error('Test agent did not settle');

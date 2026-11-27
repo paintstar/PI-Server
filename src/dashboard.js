@@ -4,6 +4,7 @@ import path from 'node:path';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { DashboardData, defaultDashboardPort, parseDashboardPort, readRunningDashboard } from './dashboard-data.js';
+import { createEventsBroadcaster, streamSpeed } from './dashboard-sse.js';
 import { agentChanges } from './agent-changes.js';
 import { getProviderQuota } from './quota-providers.js';
 import { atomicWriteJson } from './storage.js';
@@ -17,7 +18,9 @@ import {
 
 export { defaultDashboardPort };
 const currentScript = fileURLToPath(import.meta.url);
+const projectRoot = fileURLToPath(new URL('..', import.meta.url));
 const assets = fileURLToPath(new URL('../dashboard/', import.meta.url));
+const logoAssetPath = path.join(projectRoot, 'docs/assets/logo.svg');
 const quotaCacheTtlMs = 60_000;
 const ASSET_FILES = new Map([
   ['/', ['index.html', 'text/html']],
@@ -31,6 +34,10 @@ const ASSET_FILES = new Map([
   ['/sidebar.js', ['sidebar.js', 'text/javascript']],
   ['/conversation.js', ['conversation.js', 'text/javascript']],
   ['/charts.js', ['charts.js', 'text/javascript']],
+  ['/runtime.js', ['runtime.js', 'text/javascript']],
+  ['/sys-dialog.js', ['sys-dialog.js', 'text/javascript']],
+  ['/tabs.js', ['tabs.js', 'text/javascript']],
+  ['/collab-views.js', ['collab-views.js', 'text/javascript']],
   ['/style.css', ['style.css', 'text/css']],
 ]);
 
@@ -44,140 +51,8 @@ async function safeRefreshCatalog({ root, executable, agentDir }) {
   }
 }
 
-function writeSse(response, payload, cleanup) {
-  if (response.writableEnded || response.destroyed) {
-    cleanup();
-    return false;
-  }
-  try {
-    response.write(payload);
-    return true;
-  } catch (error) {
-    cleanup();
-    console.error(error?.message || String(error));
-    return false;
-  }
-}
-
-function streamSpeed(file, request, response, cleanups) {
-  response.writeHead(200, {
-    'content-type': 'text/event-stream; charset=utf-8',
-    'cache-control': 'no-store',
-    'x-content-type-options': 'nosniff',
-    connection: 'keep-alive',
-  });
-  let last = 0;
-  let closed = false;
-  let timer = null;
-  let ping = null;
-  const cleanup = () => {
-    if (closed) return;
-    closed = true;
-    clearInterval(timer);
-    clearInterval(ping);
-    cleanups.delete(cleanup);
-  };
-  writeSse(response, ': ok\n\n', cleanup);
-  const push = () => {
-    if (closed) return;
-    try {
-      const changed = fs.statSync(file).mtimeMs;
-      if (changed === last) return;
-      last = changed;
-      writeSse(response, `data: ${fs.readFileSync(file, 'utf8')}\n\n`, cleanup);
-    } catch (error) {
-      if (error?.code === 'ENOENT') return;
-      cleanup();
-      if (!response.writableEnded) response.end();
-      console.error(error?.message || String(error));
-    }
-  };
-  push();
-  if (closed) return;
-  timer = setInterval(push, 100);
-  ping = setInterval(() => { if (!closed) writeSse(response, ': ping\n\n', cleanup); }, 15000);
-  cleanups.add(cleanup);
-  request.on('close', cleanup);
-  response.on('close', cleanup);
-}
-
-function streamAgentEvents(root, data, request, response, cleanups) {
-  response.writeHead(200, {
-    'content-type': 'text/event-stream; charset=utf-8',
-    'cache-control': 'no-store',
-    'x-content-type-options': 'nosniff',
-    connection: 'keep-alive',
-  });
-  let closed = false;
-  let lastDigest = null;
-  let debounceTimer = null;
-  let fallbackTimer = null;
-  let ping = null;
-  let watcher = null;
-  const cleanup = () => {
-    if (closed) return;
-    closed = true;
-    clearTimeout(debounceTimer);
-    clearInterval(fallbackTimer);
-    clearInterval(ping);
-    if (watcher) {
-      try { watcher.close(); } catch (closeError) { if (closeError?.code !== 'ENOENT') console.error(closeError?.message || String(closeError)); }
-      watcher = null;
-    }
-    cleanups.delete(cleanup);
-  };
-  const pushIfChanged = () => {
-    if (closed) return;
-    try {
-      const payload = data.list();
-      const digest = JSON.stringify({ agents: payload.agents, errors: payload.errors, groupNames: payload.groupNames });
-      if (digest === lastDigest) return;
-      lastDigest = digest;
-      writeSse(response, `data: ${JSON.stringify(payload)}\n\n`, cleanup);
-    } catch (error) {
-      cleanup();
-      if (!response.writableEnded) response.end();
-      console.error(error?.message || String(error));
-    }
-  };
-  const schedulePush = () => {
-    if (closed || debounceTimer) return;
-    debounceTimer = setTimeout(() => { debounceTimer = null; pushIfChanged(); }, 50);
-  };
-  const onWatch = (_eventType, filename) => {
-    const name = filename ? String(filename) : '';
-    if (name && (/(^|[/\\])(live|speed)\.json(\..*\.tmp)?$/.test(name) || /\.tmp$/.test(name))) return;
-    schedulePush();
-  };
-  const attachWatcher = () => {
-    if (closed || watcher || !fs.existsSync(root)) return;
-    try { watcher = fs.watch(root, { recursive: true }, onWatch); }
-    catch (error) {
-      if (error?.code === 'ERR_FEATURE_UNAVAILABLE_ON_PLATFORM') {
-        try { watcher = fs.watch(root, onWatch); } catch (fallbackError) { if (fallbackError?.code !== 'ENOENT') throw fallbackError; }
-      } else if (error?.code !== 'ENOENT') throw error;
-    }
-    watcher?.on('error', error => {
-      if (error?.code !== 'ENOENT') console.error(error?.message || String(error));
-      try { watcher?.close(); } catch (closeError) { if (closeError?.code !== 'ENOENT') console.error(closeError?.message || String(closeError)); }
-      watcher = null;
-    });
-  };
-  pushIfChanged();
-  attachWatcher();
-  if (closed) return;
-  fallbackTimer = setInterval(() => {
-    try { attachWatcher(); pushIfChanged(); }
-    catch (error) { cleanup(); if (!response.writableEnded) response.end(); console.error(error?.message || String(error)); }
-  }, 1000);
-  ping = setInterval(() => { if (!closed) writeSse(response, ': ping\n\n', cleanup); }, 15000);
-  cleanups.add(cleanup);
-  request.on('close', cleanup);
-  response.on('close', cleanup);
-}
-
 function mapHttpErrorStatus(error) {
-  return error.message === 'Invalid agent ID' ? 400 : error.code === 'ENOENT' ? 404 : 500;
+  return error.message === 'Invalid agent ID' || error.message === 'Invalid run ID' ? 400 : error.code === 'ENOENT' ? 404 : 500;
 }
 
 function createQuotaReader(fetchQuota) {
@@ -217,31 +92,32 @@ function sendResponse(response, status, body, contentType = 'application/json') 
     'cache-control': 'no-store',
     'x-content-type-options': 'nosniff',
     'referrer-policy': 'no-referrer',
-    'content-security-policy': "default-src 'self'; connect-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+    'content-security-policy': "default-src 'self'; connect-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'",
   });
   response.end(contentType === 'application/json' ? JSON.stringify(body) : body);
 }
 
 function readJsonBody(request, limit = 64000) {
   return new Promise((resolve, reject) => {
-    let body = '';
+    const chunks = [];
     let size = 0;
     let settled = false;
     request.on('data', chunk => {
       if (settled) return;
-      size += Buffer.byteLength(chunk);
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      size += buf.length;
       if (size > limit) {
         settled = true;
         request.destroy();
         reject(Object.assign(new Error('请求体过大'), { status: 413 }));
         return;
       }
-      body += chunk;
+      chunks.push(buf);
     });
     request.on('end', () => {
       if (settled) return;
       settled = true;
-      try { resolve(JSON.parse(body || '{}')); }
+      try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')); }
       catch (error) { reject(Object.assign(new Error(error.message), { status: 400 })); }
     });
     request.on('error', error => {
@@ -317,9 +193,17 @@ async function handlePostRequest({ request, url, site, data, root, agentDir, bac
   }
 }
 
-function handleGetRequest({ request, response, url, root, data, cleanups, readCachedQuota, agentDir, executable, autoRefreshCatalog, send }) {
+function handleGetRequest({ request, response, url, root, data, cleanups, broadcaster, readCachedQuota, agentDir, executable, autoRefreshCatalog, send }) {
   if (url.pathname === '/api/health') { send(200, { service: 'pi-dashboard', pid: process.pid, scriptPath: currentScript }); return; }
   if (url.pathname === '/api/agents') { send(200, data.list()); return; }
+  if (url.pathname === '/api/runs') { send(200, { runs: data.listRuns(), refreshedAt: new Date().toISOString() }); return; }
+  const runMatch = /^\/api\/runs\/([^/]+)$/.exec(url.pathname);
+  if (runMatch) {
+    const run = data.getRun(runMatch[1]);
+    if (!run) { send(404, { error: 'Run not found' }); return; }
+    send(200, run);
+    return;
+  }
   if (url.pathname === '/api/system') { send(200, data.systemStatus()); return; }
   if (url.pathname === '/api/settings') {
     const force = url.searchParams.get('refresh') === '1';
@@ -343,7 +227,7 @@ function handleGetRequest({ request, response, url, root, data, cleanups, readCa
     );
     return;
   }
-  if (url.pathname === '/api/events') { streamAgentEvents(root, data, request, response, cleanups); return; }
+  if (url.pathname === '/api/events') { broadcaster.subscribe(request, response); return; }
   const changes = /^\/api\/agents\/([^/]+)\/changes$/.exec(url.pathname);
   if (changes) {
     const record = JSON.parse(fs.readFileSync(path.join(data.directory(changes[1]), 'agent.json'), 'utf8'));
@@ -371,6 +255,7 @@ export async function startDashboard({
 }) {
   const data = new DashboardData(root);
   const cleanups = new Set();
+  const broadcaster = createEventsBroadcaster(root, data);
   const readCachedQuota = createQuotaReader(fetchQuota);
   const validToken = value => {
     const actual = Buffer.from(value || '');
@@ -391,6 +276,10 @@ export async function startDashboard({
         return;
       }
       const cookieName = `pi_dashboard_${server.address().port}`;
+      if (url.pathname === '/logo.svg') {
+        send(200, fs.readFileSync(logoAssetPath), 'image/svg+xml');
+        return;
+      }
       if (ASSET_FILES.has(url.pathname)) {
         if (url.pathname === '/') response.setHeader('set-cookie', `${cookieName}=${token}; Path=/; HttpOnly; SameSite=Strict`);
         const [file, type] = ASSET_FILES.get(url.pathname);
@@ -403,7 +292,7 @@ export async function startDashboard({
         return;
       }
       if (request.method === 'POST') { handlePostRequest({ request, url, site, data, root, agentDir, backupDir, executable, autoRefreshCatalog, send }); return; }
-      handleGetRequest({ request, response, url, root, data, cleanups, readCachedQuota, agentDir, executable, autoRefreshCatalog, send });
+      handleGetRequest({ request, response, url, root, data, cleanups, broadcaster, readCachedQuota, agentDir, executable, autoRefreshCatalog, send });
     } catch (error) {
       send(mapHttpErrorStatus(error), { error: error.message });
     }
@@ -423,6 +312,7 @@ export async function startDashboard({
     token,
     url: `http://127.0.0.1:${actualPort}/`,
     close: () => {
+      broadcaster.closeAll();
       for (const fn of [...cleanups]) fn();
       server.closeAllConnections?.();
       return new Promise(resolve => server.close(resolve));

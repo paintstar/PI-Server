@@ -23,13 +23,24 @@ function finish(text, reason = 'stop') {
 }
 function run(prompt) {
   active = true; messages.push({ role: 'user', content: prompt }); emit({ type: 'agent_start' });
-  if (prompt === 'HANG') return;
+  if (prompt === 'HANG' || /\bFAKE_HANG\b/.test(prompt)) return;
   if (prompt === 'ASK') {
     requestAbort = new AbortController();
     fetch(process.env.PI_SUBAGENT_ENDPOINT, { method: 'POST', headers: { authorization: `Bearer ${process.env.PI_SUBAGENT_TOKEN}` }, body: JSON.stringify({ action: 'question', agentId: process.env.PI_SUBAGENT_ID, question: 'Which value?' }), signal: requestAbort.signal }).then(r => r.json()).then(result => finish('ANSWER:' + result.answer)).catch(() => finish('aborted', 'aborted'));
     return;
   }
-  timer = setTimeout(() => finish(prompt, prompt === 'FAIL' ? 'error' : 'stop'), 30);
+  const writeMatch = /FAKE_WRITE:([^\s=]+)=([^\n]+)/.exec(prompt);
+  if (writeMatch) {
+    const target = path.resolve(process.cwd(), writeMatch[1]);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, writeMatch[2]);
+  }
+  const delayMatch = /FAKE_DELAY:(\d+)/.exec(prompt);
+  const delayMs = delayMatch ? Number(delayMatch[1]) : 30;
+  const replyMatch = /FAKE_REPLY:([\s\S]+)$/.exec(prompt);
+  const replyText = replyMatch ? replyMatch[1].trim() : prompt;
+  const isError = prompt === 'FAIL' || /\bFAKE_FAIL\b/.test(prompt);
+  timer = setTimeout(() => finish(replyText, isError ? 'error' : 'stop'), delayMs);
 }
 let buffer = '';
 process.stdin.setEncoding('utf8');

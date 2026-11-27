@@ -321,7 +321,7 @@ test('DashboardData snapshot includes Antigravity parentInfo, callback cursor an
 });
 
 test('module line limits and zero-comment hygiene hold across refactored files', () => {
-  for (const dir of ['src', 'scripts', 'dashboard']) {
+  for (const dir of ['bin', 'src', 'scripts', 'dashboard']) {
     for (const file of fs.readdirSync(dir).filter(name => name.endsWith('.js'))) {
       const lines = fs.readFileSync(path.join(dir, file), 'utf8').split('\n');
       assert.ok(lines.length < 500, `${dir}/${file} exceeds 500 lines (${lines.length})`);
@@ -331,8 +331,20 @@ test('module line limits and zero-comment hygiene hold across refactored files',
     }
   }
   const cleanFiles = [
+    ...fs.readdirSync('bin').filter(name => name.endsWith('.js')).map(name => path.join('bin', name)),
     ...fs.readdirSync('dashboard').filter(name => name.endsWith('.js')).map(name => path.join('dashboard', name)),
+    'src/bin-resolve.js',
+    'src/acceptance.js',
+    'src/budget.js',
+    'src/orchestration-core.js',
+    'src/consult.js',
+    'src/council.js',
+    'src/cross-review.js',
+    'src/orchestration-tools.js',
     'src/dashboard.js',
+    'src/dashboard-data.js',
+    'src/dashboard-insights.js',
+    'src/dashboard-sse.js',
     'src/dashboard-launcher.js',
     'src/benchmark-profile.js',
   ];
@@ -477,4 +489,78 @@ test('dashboard session editing, archiving, batch-mark and lightweight live endp
   })).json();
   assert.deepEqual(batchClose.updatedIds, [idle.id]);
   assert.deepEqual(batchClose.skippedIds, [busy.id]);
+});
+
+test('dashboard v2 routes serve /logo.svg, modular assets, /api/runs, /api/system sandbox/hosts and verification counts read-only', async t => {
+  const { manager, cwd } = await setup(t);
+  fs.mkdirSync(path.join(cwd, 'src'), { recursive: true });
+  const okAgent = await manager.spawn({
+    cwd, prompt: 'done', provider: 'fake', model: 'cheap', ownedPaths: ['src'], workspaceMode: 'shared',
+    acceptanceChecks: [{ name: 'ok', command: 'exit 0' }],
+  });
+  await settled(manager, okAgent.id, 5000);
+  const badAgent = await manager.spawn({
+    cwd, prompt: 'done', provider: 'fake', model: 'cheap', ownedPaths: ['other'], workspaceMode: 'shared',
+    acceptanceChecks: [{ name: 'fail', command: 'exit 1' }],
+  });
+  await settled(manager, badAgent.id, 5000);
+  const lockBefore = fs.readFileSync(path.join(manager.storage.root, okAgent.id, 'owner.lock'), 'utf8');
+
+  const runId = '22222222-2222-4222-8222-222222222222';
+  const runsDir = path.join(manager.storage.root, 'runs');
+  fs.mkdirSync(runsDir, { recursive: true });
+  fs.writeFileSync(path.join(runsDir, `${runId}.json`), JSON.stringify({
+    runId,
+    kind: 'cross_review',
+    status: 'completed',
+    createdAt: new Date().toISOString(),
+    completedAt: new Date().toISOString(),
+    sourceAgentId: okAgent.id,
+    verdict: 'concerns',
+    findings: [{ severity: 'concern', file: 'src/a.js', line: 10, title: 'Check boundary', detail: 'Needs guard' }],
+  }));
+
+  const dashboard = await startDashboard({ root: manager.storage.root, port: 0, token: 'v2-dash' });
+  t.after(() => dashboard.close());
+  const origin = new URL(dashboard.url).origin;
+  const auth = { authorization: 'Bearer v2-dash' };
+
+  const logoRes = await fetch(`${origin}/logo.svg`);
+  assert.equal(logoRes.status, 200);
+  assert.match(logoRes.headers.get('content-type') || '', /image\/svg\+xml/);
+  assert.match(logoRes.headers.get('content-security-policy') || '', /default-src 'self'/);
+  const logoBody = await logoRes.text();
+  assert.match(logoBody, /<svg\b/);
+  assert.equal(/data:/i.test(logoBody), false);
+
+  for (const asset of ['/runtime.js', '/sys-dialog.js', '/tabs.js', '/collab-views.js']) {
+    const res = await fetch(`${origin}${asset}`);
+    assert.equal(res.status, 200, `asset ${asset}`);
+  }
+
+  const runsList = await (await fetch(`${origin}/api/runs`, { headers: auth })).json();
+  assert.equal(runsList.runs.length, 1);
+  assert.equal(runsList.runs[0].runId, runId);
+  assert.equal(runsList.runs[0].verdict, 'concerns');
+
+  const runDetail = await (await fetch(`${origin}/api/runs/${runId}`, { headers: auth })).json();
+  assert.equal(runDetail.findings[0].severity, 'concern');
+  assert.equal((await fetch(`${origin}/api/runs/not-a-uuid`, { headers: auth })).status, 400);
+  assert.equal((await fetch(`${origin}/api/runs/33333333-3333-4333-8333-333333333333`, { headers: auth })).status, 404);
+
+  const sys = await (await fetch(`${origin}/api/system`, { headers: auth })).json();
+  assert.equal(sys.counts.completedVerified, 1);
+  assert.equal(sys.counts.completedUnverified, 1);
+  assert.equal(sys.counts.total, 2);
+  assert.equal(sys.runsCount, 1);
+  assert.ok(sys.sandbox && typeof sys.sandbox.backend === 'string' && typeof sys.sandbox.defaultMode === 'string');
+  for (const host of ['antigravity', 'claude', 'codex', 'opencode']) {
+    assert.equal(typeof sys.hosts[host].configured, 'boolean');
+    assert.equal(typeof sys.hosts[host].activeAgents, 'number');
+  }
+
+  const detail = await (await fetch(`${origin}/api/agents/${okAgent.id}`, { headers: auth })).json();
+  assert.equal(detail.agent.verification.status, 'verified');
+  assert.equal(detail.agent.verification.checks.length, 1);
+  assert.equal(fs.readFileSync(path.join(manager.storage.root, okAgent.id, 'owner.lock'), 'utf8'), lockBefore);
 });

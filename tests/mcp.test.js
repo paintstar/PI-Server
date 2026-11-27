@@ -12,12 +12,15 @@ test('MCP client discovers tools, creates an agent and receives structured error
   const client = new Client({ name: 'test', version: '1' });
   t.after(async () => { await client.close(); await server.close(); });
   await server.connect(serverTransport); await client.connect(clientTransport);
-  const tools = await client.listTools(); assert.equal(tools.tools.length, 24);
+  const tools = await client.listTools(); assert.equal(tools.tools.length, 27);
   assert.equal(tools.tools.find(tool => tool.name === 'get_quota').annotations.readOnlyHint, true);
   assert.equal(tools.tools.find(tool => tool.name === 'get_subagent_health').annotations.readOnlyHint, true);
   assert.equal(tools.tools.find(tool => tool.name === 'get_model_profiles').annotations.readOnlyHint, true);
   assert.ok(tools.tools.find(tool => tool.name === 'bind_session'));
   assert.ok(tools.tools.find(tool => tool.name === 'organize_agents'));
+  assert.ok(tools.tools.find(tool => tool.name === 'consult'));
+  assert.ok(tools.tools.find(tool => tool.name === 'council'));
+  assert.ok(tools.tools.find(tool => tool.name === 'cross_review'));
   const result = await client.callTool({ name: 'spawn_agent', arguments: { cwd, prompt: 'hello', provider: 'fake', model: 'cheap', ownedPaths: ['src'], workspaceMode: 'shared' } });
   assert.equal(result.isError, undefined);
   const agentId = result.structuredContent.result.id;
@@ -28,7 +31,7 @@ test('MCP client discovers tools, creates an agent and receives structured error
     const w = await client.callTool({ name: 'wait_agent', arguments: { agentIds: [agentId], after: { [agentId]: after }, timeoutMs: 5000 } });
     const item = w.structuredContent.result.results[0];
     after = item.nextSequence;
-    if (['completed', 'failed', 'interrupted', 'closed'].includes(item.agent.status)) break;
+    if (['completed', 'completed-verified', 'completed-unverified', 'failed', 'interrupted', 'closed'].includes(item.agent.status)) break;
   }
   const orgRes = await client.callTool({ name: 'organize_agents', arguments: { agentIds: [agentId], title: '保守复核记录', note: '核心方案对比', pinned: true, group: '专题复核', archived: true } });
   assert.equal(orgRes.isError, undefined);

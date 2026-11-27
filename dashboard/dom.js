@@ -8,6 +8,8 @@ export const labels = {
   finishing: '正在结束',
   idle: '空闲',
   completed: '已完成',
+  'completed-verified': '已验收',
+  'completed-unverified': '验收未通过',
   failed: '失败',
   interrupted: '已中断',
   stopped: '已停止',
@@ -15,7 +17,7 @@ export const labels = {
   disconnected: '控制进程离线',
 };
 
-export const order = ['running', 'starting', 'finishing', 'waiting', 'idle', 'completed', 'interrupted', 'stopped', 'failed', 'disconnected', 'closed'];
+export const order = ['running', 'starting', 'finishing', 'waiting', 'idle', 'completed-verified', 'completed', 'completed-unverified', 'interrupted', 'stopped', 'failed', 'disconnected', 'closed'];
 export const colors = {
   running: '--run',
   starting: '--run',
@@ -23,6 +25,8 @@ export const colors = {
   waiting: '--wait',
   idle: '--idle',
   completed: '--done',
+  'completed-verified': '--done',
+  'completed-unverified': '--off',
   interrupted: '--idle',
   stopped: '--idle',
   failed: '--fail',
@@ -32,14 +36,15 @@ export const colors = {
 
 export const working = new Set(['starting', 'running', 'waiting', 'finishing']);
 export const busyStatuses = new Set(['starting', 'running', 'finishing']);
-export const attention = new Set(['waiting', 'failed', 'disconnected']);
+export const doneStatuses = new Set(['completed', 'completed-verified', 'completed-unverified']);
+export const attention = new Set(['waiting', 'failed', 'disconnected', 'completed-unverified']);
 
 export const filters = [
   { key: 'all', title: '全部', match: (_, a) => !a?.archived },
   { key: 'working', title: '工作中', match: (s, a) => !a?.archived && working.has(s) },
   { key: 'waiting', title: '待答复', match: (s, a) => !a?.archived && s === 'waiting', secondary: true },
-  { key: 'completed', title: '已完成', match: (s, a) => !a?.archived && s === 'completed' },
-  { key: 'problem', title: '异常', match: (s, a) => !a?.archived && (s === 'failed' || s === 'disconnected'), secondary: true },
+  { key: 'completed', title: '已完成', match: (s, a) => !a?.archived && doneStatuses.has(s) },
+  { key: 'problem', title: '异常', match: (s, a) => !a?.archived && (s === 'failed' || s === 'disconnected' || s === 'completed-unverified'), secondary: true },
   { key: 'closed', title: '已关闭', match: (s, a) => !a?.archived && s === 'closed', secondary: true },
   { key: 'archived', title: '已归档', match: (_, a) => Boolean(a?.archived), secondary: true },
 ];
@@ -67,12 +72,14 @@ export const eventTypes = {
   instruction_failed: '任务发送失败',
   policy_changed: '策略已更新',
   budget_limit: '达到用量上限',
+  acceptance_started: '开始验收',
+  acceptance_completed: '验收完成',
 };
 
 export const commTypes = new Set(['instruction', 'message', 'question', 'answer', 'question_cancelled']);
 export const badTypes = new Set(['process_failed', 'control_failed', 'extension_error', 'instruction_failed', 'interrupted', 'budget_limit']);
-export const lifeTypes = new Set(['ready', 'started', 'settled', 'resumed', 'interrupted', 'closed', 'model_changed', 'model_restored', 'process_failed', 'control_failed', 'extension_error', 'instruction_failed', 'budget_limit']);
-export const notifyOn = { waiting: '在等待答复', failed: '执行失败', completed: '已完成', disconnected: '控制进程离线' };
+export const lifeTypes = new Set(['ready', 'started', 'settled', 'acceptance_started', 'acceptance_completed', 'resumed', 'interrupted', 'closed', 'model_changed', 'model_restored', 'process_failed', 'control_failed', 'extension_error', 'instruction_failed', 'budget_limit']);
+export const notifyOn = { waiting: '在等待答复', failed: '执行失败', completed: '已完成', 'completed-verified': '已通过验收', 'completed-unverified': '验收未通过', disconnected: '控制进程离线' };
 export const kindNames = { antigravity: 'AGY', claude: 'Claude', codex: 'Codex', opencode: 'OpenCode' };
 
 export const store = {
@@ -180,6 +187,9 @@ export const paths = {
   archive: 'M3.5 5h17v3.5h-17zM5 8.5v10a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5v-10M10 12.5h4',
   unarchive: 'M3.5 5h17v3.5h-17zM5 8.5v10a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5v-10M12 16v-5M9.5 13.5 12 11l2.5 2.5',
   note: 'M5 4.5h10l4 4v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-14a1 1 0 0 1 1-1zM14.5 4.5v4h4M8 12h8M8 15.5h5',
+  shield: 'M12 3.5l7 3v5.2c0 4.3-2.9 7.8-7 8.8-4.1-1-7-4.5-7-8.8V6.5zM9 12.2l2.1 2.1 4-4',
+  warn: 'M12 4.5l8.5 15h-17zM12 10v4.2M12 17h.01',
+  council: 'M12 5a2.5 2.5 0 1 0 0 .01M6 17a2.5 2.5 0 1 0 0 .01M18 17a2.5 2.5 0 1 0 0 .01M10.5 7l-3.2 7.6M13.5 7l3.2 7.6M8.5 17h7',
 };
 
 export const ms = value => value ? Date.parse(value) : NaN;

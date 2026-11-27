@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Storage, processAlive, readJsonSafe, ownerLockAlive } from '../src/storage.js';
-import { callbackText, readCallbackRecord, sessionBoundAgentIds, scanAgentEvents } from '../src/callbacks.js';
+import { callbackText, readCallbackRecord, deliveredCursorOf, sessionBoundAgentIds, scanAgentEvents } from '../src/callbacks.js';
 import { waitCommandFor, sessionIdPattern } from '../src/wait-reminder.js';
 
 const relevantEvents = new Set(['question', 'settled', 'process_failed', 'budget_limit', 'control_failed']);
@@ -70,7 +70,7 @@ function collectUndelivered(ids) {
   for (const id of ids) {
     const cb = readCallbackRecord(root, id);
     const { matched } = scanAgentEvents(storage, id, {
-      afterSequence: cb?.antigravityDeliveredSeq || 0,
+      afterSequence: deliveredCursorOf(cb),
       eventTypes: relevantEvents,
       source: hookEvent || 'hook',
       sessionId: conversationId,

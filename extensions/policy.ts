@@ -12,17 +12,27 @@ import { providerFetch } from '../src/provider-fetch.js';
 /** Explicit tools only: filesystem and shell operations execute in OS-restricted subprocesses. */
 export default function (pi: ExtensionAPI) {
   const policy = JSON.parse(fs.readFileSync(process.env.PI_SUBAGENT_POLICY!, 'utf8'));
+  const readOnly = Boolean(policy.readOnly);
+  const nonInteractive = Boolean(policy.nonInteractive);
+  const allowWorkspaceRead = policy.allowWorkspaceRead !== false;
   const readFile = (file: string) => fileOperation(policy, 'read', file);
   const writeFile = async (file: string, value: string) => { await fileOperation(policy, 'write', file, value); };
   const access = async (file: string) => { await fileOperation(policy, 'access', file); };
-  pi.registerTool(createReadToolDefinition(policy.cwd, { operations: sandboxedReadOperations(policy) }));
-  pi.registerTool(createWriteToolDefinition(policy.cwd, { operations: { writeFile, mkdir: async () => {} } }));
-  pi.registerTool(createEditToolDefinition(policy.cwd, { operations: { readFile, writeFile, access } }));
-  // 开发模式要跑完整检查，单条命令最多 30 分钟；严格模式仍是 5 分钟。
-  pi.registerTool(createBashToolDefinition(policy.cwd, { exposeSessionEnvironment: false, operations: {
-    exec: (command, cwd, options) => runSandboxed({ ...policy, cwd }, '/bin/bash', ['--noprofile', '--norc', '-c', command], { ...options, timeout: Math.min((options.timeout || 60) * 1000, sandboxMode(policy) !== 'strict' ? 1800000 : 300000) }),
-  } }));
-  const tools = ['read', 'write', 'edit', 'bash', 'agent_message', 'ask_parent'];
+  if (allowWorkspaceRead) pi.registerTool(createReadToolDefinition(policy.cwd, { operations: sandboxedReadOperations(policy) }));
+  if (!readOnly) {
+    pi.registerTool(createWriteToolDefinition(policy.cwd, { operations: { writeFile, mkdir: async () => {} } }));
+    pi.registerTool(createEditToolDefinition(policy.cwd, { operations: { readFile, writeFile, access } }));
+    // 开发模式要跑完整检查，单条命令最多 30 分钟；严格模式仍是 5 分钟。
+    pi.registerTool(createBashToolDefinition(policy.cwd, { exposeSessionEnvironment: false, operations: {
+      exec: (command, cwd, options) => runSandboxed({ ...policy, cwd }, '/bin/bash', ['--noprofile', '--norc', '-c', command], { ...options, timeout: Math.min((options.timeout || 60) * 1000, sandboxMode(policy) !== 'strict' ? 1800000 : 300000) }),
+    } }));
+  }
+  const tools = [
+    ...(allowWorkspaceRead ? ['read'] : []),
+    ...(readOnly ? [] : ['write', 'edit', 'bash']),
+    ...(nonInteractive && readOnly ? [] : ['agent_message']),
+    ...(nonInteractive ? [] : ['ask_parent']),
+  ];
   pi.on('before_agent_start', event => {
     applyBenchmarkPromptProfile(event.systemPromptOptions);
   });

@@ -1,43 +1,50 @@
 # 验证矩阵与回归记录
 
-本文档说明 Pi Server 的自动化测试覆盖范围、真机联调脚本以及历次关键架构演进的实测结果。
+本文档说明 Pi Server v2.0 的四层验证体系、离线隔离自动化测试套件、脱敏可视化夹具以及真机端到端验收脚本。
 
-## 如何运行验证
+## 四层验证入口
 
-日常开发与 CI 默认只运行离线测试套件，不消耗任何模型额度，也不触碰真实用户数据：
+日常开发与双平台 CI（macOS Seatbelt + Ubuntu Bubblewrap）默认只运行 L1 + L2 离线门禁，不消耗模型额度，也不触碰真实用户数据：
 
 ```bash
-npm run check                   # 检查全部 JS / TS 源码语法
-npm test                        # 运行全部 100 项隔离单元、协议、沙箱与面板测试（macOS Seatbelt / Linux & WSL2 bwrap）
-npm run verify:communication    # 使用本机配置的模型实测断线重连、阻塞提问与请求上限拦截
-npm run verify:live             # 实测多模型并行修改、兄弟通信与临时模型升降级
-node scripts/verify-codex.js    # 实测真实 Codex CLI 通过 stdio MCP 调度子代理
-node scripts/verify-opencode.js # 实测真实 OpenCode CLI 通过 stdio MCP 调度子代理
+# L1 静态语法、行数上限（<500 / <450）与零行首注释门禁
+npm run check
+
+# L2 全量离线隔离测试（原 100 项 + M1/M2/M3 全部新增测试）
+npm test
+
+# CLI 八维体检与无副作用预览
+node bin/pi-server.js doctor --json
+node bin/pi-server.js install --dry-run
+
+# L3 脱敏可视化演示夹具（供浏览器明暗双主题 + 375px 窄屏验收）
+node scripts/seed-demo-state.js --dir=/tmp/pi-demo
+PI_SERVER_STATE_DIR=/tmp/pi-demo node bin/pi-server.js dashboard
+
+# L3/L4 真机多模型端到端验收脚本（隔离临时仓库）
+node scripts/verify-v2.js       # v2.0 验收闭环 + cross_review + council 真机实测
+npm run verify:communication    # 断线重连、阻塞提问与请求上限实测
+npm run verify:live             # 多模型并行修改、兄弟通信与临时模型切换
+node scripts/verify-codex.js    # 真实 Codex CLI 调度实测（可用 PI_VERIFY_CODEX_MODEL 覆盖）
+node scripts/verify-opencode.js # 真实 OpenCode CLI 调度实测
 ```
 
-真机脚本均在系统临时目录中构造隔离演示包执行；运行生成的本地记录保存在 `.agents/records/`（已被 `.gitignore` 排除），包含当次提示词与模型输出，仅留本机核验使用。
-
-## 自动化测试覆盖模块（100 项）
+## 自动化测试覆盖模块
 
 | 测试文件 | 验证重点 |
 | --- | --- |
-| `tests/antigravity.test.js` | Antigravity 会话身份识别、`bind_session`、`wait-events --session` 心跳与唤醒、`PreInvocation`/`Stop` 钩子幂等注入与拦截、严格插件包构建校验、超过 100 条事件的游标排干去重 |
-| `tests/opencode.test.js` | OpenCode 宿主识别、`opencodeSessionId` 与 `bind_session` 会话绑定、`wait-events --session` 与 `DashboardData` 统一游标联动、可选 `opencodeCliWake` 去重唤醒、JSONC 保留注释安装/卸载与 `0600` 备份、沙箱拦截 `~/.config/opencode` 与 `~/.local/share/opencode` |
-| `tests/linux-sandbox.test.js` | Linux / WSL2 `bubblewrap` (`bwrap`) 路径探测、`strict`/`dev`/`bypass` 挂载与 `usrmerge` 符号链接构建、断网与凭据/状态目录屏蔽、`sandboxHealth()` |
-| `tests/callbacks.test.js` | Claude Code channel 通知、Codex 线程队列投递与历史不重放、`get_agent_changes` Git 工作树差异计算、单代理 `wait-events` 唤醒 |
-| `tests/communication.test.js` | `ask_parent` 阻塞提问与显式答复、取消等待、伪造令牌拦截、兄弟代理互发指令、分页读取不丢事件 |
-| `tests/controller.test.js` | 独立 Unix Socket 控制进程在桥接断开后保活子代理与提问、多父会话隔离、新建代理即时唤醒长轮询 |
-| `tests/dashboard.test.js` | 只读快照不抢占归属、同源与令牌防护、思考文本展示且隐藏加密签名、实时 `live.json` 流式镜像、自定义标题/备注/置顶/归档/分组移动、SSE `/api/events` 推送、单文件行数与无注释卫生约束 |
-| `tests/model-settings.test.js` | API Key 与 OAuth 脱敏及 `0600` 备份、本机 Codex 登录导入与 JWT 校验、原型污染拦截、1M 上下文窗口同步 `models.json` 与 `modelOverrides`、`baseContextWindow` 基线恢复、禁用模型拦截 |
-| `tests/reliable-messages.test.js` | 消息回执幂等去重与冲突报错、请求前预检与挂钟超时终止、`maxTotalTokens` 排除重复 `cacheRead` 计数与 80% 预警、子进程退出清理 `runtimeTimer` |
-| `tests/tool-sandbox.test.js` | macOS Seatbelt / Linux & WSL2 `bwrap` `strict` / `dev` / `bypass` 三档文件读写、符号链接越界拦截、凭据与控制状态目录隔离、禁网拦截、取消时连带终止后代子进程 |
-| `tests/mcp.test.js` & `tests/mcp-tasks.test.js` | 真实 MCP SDK 客户端连接、24 个工具发现、标准 MCP Tasks 状态机、取消与 TTL 过期清理、资源订阅通知 |
-| `tests/quota.test.js` & `tests/quota-providers.test.js` | Codex、GLM / Z.ai、MiniMax Token Plan、DeepSeek、OpenCode Go 额度与余额解析、过期凭据前置报错、隐私身份字段剥离 |
-| `tests/workspace.test.js`、`tests/lifecycle.test.js`、`tests/models.test.js`、`tests/recovery.test.js` | 并行 Git worktree 分支隔离、脏工作区显式决策、空闲模型切换与 `next_run` 自动恢复、关闭后恢复不重放历史任务 |
-| `tests/benchmark-profile.test.js` | `BENCHMARK_PROMPT_PROFILE=clean` 洁净评测模式移除继承的上下文文件与技能且保留工具和沙箱限制 |
+| `tests/acceptance-checks.test.js` | **v2.0 机械验收闭环**：全过转 `completed-verified`、失败转 `completed-unverified` + `send_message` 修复重验、整批超时与 `strict` 沙箱 `sandboxHint`、验收中 `interrupt`/`closeAgent` 秒中止零死锁、MCP Task `failed`+`isError` 映射、`readOnly` 同目录多路并发 |
+| `tests/orchestration.test.js` | **v2.0 高层协作原语**：`consult`（只读归档、`runs/*.json`、`contextFiles` 越界拦截、`dryRun`、非 JSON 降级、取消清理）、`council`（脏目录 3 路并发、`cleanProfile`、`partial`/低于 `minQuorum`、容量/`budgetCapUsd`/`unknownPricingModels`）、`cross_review`（未跟踪新文件 diff、同模型拒审、空 diff 零成本短路、`blocker` 强升、畸形 Fail-Closed）与 MCP 端到端调用 |
+| `tests/backend-hardening.test.js` | **v2.0 后端 8 项加固**：`bwrap` 普通文件 `/dev/null` 掩蔽防 `ENOTDIR`、跨分片中文 UTF-8 与 200KB 请求体无乱码、重连保留 `parentInfo`、三零条件热替换、`spawn` 失败清 Map、`interruptedRun` 防迟到 `agent_settled` 覆盖、`manager.read()` 内存尾窗一致 |
+| `tests/cli-install.test.js` | **v2.0 CLI 与安装稳健性**：`fnm_multishells` default/pinned 别名软链稳定化（不穿透 `bin/pi`）、MOTD 抗噪、`install --dry-run` 零副作用与实装校验、`doctor --json` 8 项体检与零密钥泄露、`ask --dry-run` 端到端、`serve` 的 `stdout` 纯净 JSON-RPC 帧 |
+| `tests/dashboard.test.js` | 只读快照不抢占归属、同源与令牌防护、共享单实例 SSE 广播、`/api/runs` & `/api/runs/:runId`、`/api/system`（`sandbox` + 四端 `hosts`）、`/logo.svg` 与全部 ES 模块静态路由、单文件行数上限与零行首注释门禁 |
+| `tests/antigravity.test.js` & `tests/opencode.test.js` | Antigravity 与 OpenCode 会话绑定、单调游标排干去重、钩子与 JSONC 保留注释安装/卸载、四端凭据沙箱隔离 |
+| `tests/tool-sandbox.test.js` & `tests/linux-sandbox.test.js` | macOS Seatbelt / Linux & WSL2 `bwrap` 三档读写、符号链接越界拦截、凭据与控制状态目录隔离、禁网与后代进程组终止 |
+| `tests/mcp.test.js` & `tests/mcp-tasks.test.js` | 真实 MCP SDK 客户端发现全部 **27 个工具**、标准 Tasks 状态机、取消与 TTL 清理、资源订阅 |
+| `tests/callbacks.test.js`、`tests/communication.test.js`、`tests/controller.test.js`、`tests/model-settings.test.js`、`tests/quota*.test.js`、`tests/reliable-messages.test.js`、`tests/workspace.test.js`、`tests/lifecycle.test.js`、`tests/recovery.test.js`、`tests/benchmark-profile.test.js` | 原有 100 项协议、通信回执、独立控制器、模型设置脱敏、额度查询、工作树隔离、洁净评测模式全量回归基线 |
 
-## 关键里程碑真机验证摘要
+## 关键里程碑验收摘要
 
-1. **跨模型并行与会话恢复实测**：在隔离目录中实测 GLM、DeepSeek、MiniMax 与 OpenCode Go 多模型并行修改各自授权路径、子代理调用 `ask_parent` 暂停等待主会话答复后继续、兄弟代理点对点协作、`next_run` 临时切换模型并在结算后自动恢复原模型，以及关闭后通过 `resume_agent` 恢复且不重复执行旧指令。
-2. **断线恢复与请求前硬限实测**：通过真实 stdio MCP 启动子代理发起阻塞提问后主动断开 MCP 连接，再由新连接调用 `resume_agent` 接手同一身份并完成 `reply_question` 答复与受限文件写入；同时实测 `maxModelRequests=1` 在第二次模型请求发出前准确拦截并记入限制原因。
-3. **Antigravity 双重回调与 Pi 调度台实测**：在 Antigravity 真实会话中完成本机 Codex OAuth 同步（`pi auth check` 状态为 `ready`），绑定当前会话启动 GPT 子代理完成进度汇报、阻塞提问、答复唤醒、多轮追加指令与 `PreInvocation` 钩子自动注入回调；通过浏览器在桌面端与 375px 窄屏下实测 `http://127.0.0.1:3141/` 三栏布局、SSE 实时推送、上下文水位曲线、内联 Git 差异与设置中心交互，零控制台异常且无横向溢出。
+1. **v2.0 M1–M3 全量离线与双平台 CI 门禁**：`npm run check` 与 `npm test`（原 100 项零回归 + M1/M2/M3 全部新增测试）在 macOS Seatbelt 与 Ubuntu Bubblewrap 双环境全绿，单文件体积上限与零行首注释卫生检查全通过。
+2. **浏览器桌面 + 375px 窄屏视觉验收**：通过 `scripts/seed-demo-state.js` 构造脱敏四端+会诊+审查+验收夹具，验证桌面 `1440×900` 与窄屏 `375×812` 明暗双主题零控制台报错、零横向溢出，全部新视图与内联 Diff 联动正常。
+3. **四端宿主与真机模型实测**：覆盖 Antigravity、Claude Code、Codex、OpenCode 四端安装与回调唤醒，以及 `verify-v2.js` 真机验收闭环、跨模型审查与多模型委员会并发运行。

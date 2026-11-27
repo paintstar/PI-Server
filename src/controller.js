@@ -11,6 +11,8 @@ import { normalizeParentInfo } from './controller-client.js';
 import { FileTaskStore } from './task-store.js';
 
 const controllerScriptPath = fileURLToPath(import.meta.url);
+const controllerVersion = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
+const controllerCapabilities = ['utf8Body', 'hotUpgradeGuard', 'acceptanceChecks', 'readOnlyPolicy'];
 const activeAgentStatuses = new Set(['starting', 'running', 'waiting', 'finishing']);
 const operationRetentionMs = 7 * 86400 * 1000;
 const detachedParentRetentionMs = 86400 * 1000;
@@ -175,13 +177,33 @@ function waitParentEvents(owned, parentId, after = {}, timeoutMs = 20000, signal
 async function dispatch(parentId, method, v, signal) {
   if (method === 'health') {
     const activeAgents = [...manager.agents.values()].filter(a => activeAgentStatuses.has(a.record.status)).length;
-    return { service: 'pi-controller', pid: process.pid, scriptPath: controllerScriptPath, piAgentDir: process.env.PI_CODING_AGENT_DIR || '', activeAgents, totalAgents: manager.agents.size };
+    const liveProcesses = [...manager.agents.values()].filter(a => a.rpc && !a.rpc.exited).length;
+    const activeParents = [...parents.values()].filter(p => p.connected && processAlive(p.pid)).length;
+    const inflightOps = writes.size;
+    return {
+      service: 'pi-controller',
+      version: controllerVersion,
+      capabilities: controllerCapabilities,
+      pid: process.pid,
+      scriptPath: controllerScriptPath,
+      piAgentDir: process.env.PI_CODING_AGENT_DIR || '',
+      activeAgents,
+      liveProcesses,
+      activeParents,
+      inflightOps,
+      totalAgents: manager.agents.size,
+    };
   }
   if (method === 'attach') {
     const identity = normalizeParentInfo(v.parent, parents.get(parentId)?.identity);
     parents.set(parentId, { connected: true, pid: v.pid, identity, lastSeen: Date.now() }); return { parentId, identity };
   }
-  if (method === 'detach') { parents.set(parentId, { connected: false, lastSeen: Date.now() }); parentWake.emit(parentId); return { detached: true }; }
+  if (method === 'detach') {
+    const prev = parents.get(parentId);
+    parents.set(parentId, { ...prev, connected: false, lastSeen: Date.now() });
+    parentWake.emit(parentId);
+    return { detached: true };
+  }
   const parent = parents.get(parentId); if (!parent?.connected) throw new Error('Parent is not attached'); parent.lastSeen = Date.now();
   const owned = () => [...manager.agents.values()].filter(value => value.record.parentId === parentId);
   if (method === 'task') {
@@ -238,8 +260,14 @@ const server = http.createServer(async (request, response) => {
   try {
     const authorization = Buffer.from(request.headers.authorization || ''); const expected = Buffer.from(`Bearer ${token}`);
     if (request.method !== 'POST' || request.url !== '/rpc' || authorization.length !== expected.length || !timingSafeEqual(authorization, expected)) throw new Error('Unauthorized controller request');
-    let body = ''; for await (const chunk of request) { body += chunk; if (Buffer.byteLength(body) > 128000) throw new Error('Request too large'); }
-    const { parentId, method, values } = JSON.parse(body);
+    const chunks = []; let bodyBytes = 0;
+    for await (const chunk of request) {
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      bodyBytes += buf.length;
+      if (bodyBytes > 512000) throw new Error('Request too large');
+      chunks.push(buf);
+    }
+    const { parentId, method, values } = JSON.parse(Buffer.concat(chunks).toString('utf8'));
     if (!/^[0-9a-f-]{36}$/.test(parentId)) throw new Error('Invalid parent ID');
     reply({ result: await dispatch(parentId, method, values || {}, reqAbort.signal) });
   } catch (error) { reply({ error: error.message }); }

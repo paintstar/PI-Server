@@ -36,20 +36,30 @@ export function spawnReminder(agentId, { sessionId } = {}) {
 }
 
 export function waitReminder(result, { sessionId } = {}) {
-  const pending = [], asking = [];
+  const pending = [], asking = [], unverified = [];
   for (const item of result.results || []) {
     const status = item.agent?.status;
     const entry = { agentId: item.agent?.id, status, after: item.nextSequence };
-    if (working.has(status)) pending.push(entry); else if (status === 'waiting') asking.push(entry);
+    if (working.has(status)) pending.push(entry);
+    else if (status === 'waiting') asking.push(entry);
+    else if (status === 'completed-unverified') unverified.push(entry);
   }
-  if (!pending.length && !asking.length) return result;
+  if (!pending.length && !asking.length && !unverified.length) return result;
+  if (!pending.length && !asking.length) {
+    return {
+      ...result,
+      unverified,
+      reminder: '有代理已结束回合但机械验收未通过（completed-unverified）：请检查 verification.checks 失败输出，按需用 send_message 下发修复指令重新验证。',
+    };
+  }
   const targetId = asking[0]?.agentId || pending[0]?.agentId;
   const sessionCommand = waitCommandFor({ agentId: targetId, sessionId });
   return {
-    ...result, pending, asking,
+    ...result, pending, asking, ...(unverified.length ? { unverified } : {}),
     antigravityBackgroundCommand: sessionCommand,
     opencodeBackgroundCommand: sessionCommand,
     reminder: [asking.length ? '有代理正在等待答复：先读取它的提问，用 reply_question 回答，否则它不会继续。' : null,
-      pending.length ? '仍有代理在工作：把各自的 after 填进下一次 wait_agent 继续等，不要在它们结束前收尾本轮；若必须结束，要先告诉用户它们仍在后台运行。' : null].filter(Boolean).join(' '),
+      pending.length ? '仍有代理在工作：把各自的 after 填进下一次 wait_agent 继续等，不要在它们结束前收尾本轮；若必须结束，要先告诉用户它们仍在后台运行。' : null,
+      unverified.length ? '另有代理机械验收未通过（completed-unverified），请查看失败检查项。' : null].filter(Boolean).join(' '),
   };
 }

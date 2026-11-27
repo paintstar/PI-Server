@@ -1,19 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
   <defs>
-    <linearGradient id="bg" x1="12" y1="8" x2="116" y2="120" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#201E1B"/>
-      <stop offset="100%" stop-color="#131210"/>
+    <linearGradient id="pi-bg" x1="10" y1="8" x2="118" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1d2028"/>
+      <stop offset="100%" stop-color="#111318"/>
     </linearGradient>
-    <linearGradient id="ring" x1="28" y1="28" x2="100" y2="100" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#F08354"/>
-      <stop offset="100%" stop-color="#D96034"/>
+    <linearGradient id="pi-bus" x1="28" y1="28" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#f7f4ee"/>
+      <stop offset="100%" stop-color="#cfd5e2"/>
     </linearGradient>
   </defs>
-  <rect x="8" y="8" width="112" height="112" rx="28" fill="url(#bg)" stroke="#332F2A" stroke-width="2"/>
-  <circle cx="64" cy="64" r="36" stroke="url(#ring)" stroke-width="6"/>
-  <circle cx="64" cy="64" r="22" stroke="#3D3832" stroke-width="2" stroke-dasharray="4 4"/>
-  <circle cx="64" cy="64" r="10.5" fill="#F6F1EA"/>
-  <circle cx="64" cy="28" r="7.5" fill="#E87748"/>
-  <circle cx="95.2" cy="82" r="6.5" fill="#38A169"/>
-  <circle cx="32.8" cy="82" r="6" fill="#63B3ED"/>
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="url(#pi-bg)" stroke="#2c313d" stroke-width="2"/>
+  <rect x="24" y="24" width="80" height="80" rx="20" stroke="#2a303c" stroke-width="1.5" stroke-dasharray="4 4"/>
+  <path d="M36 36L52 50M92 36L76 50M36 92L52 78M92 92L76 78" stroke="#454d5e" stroke-width="3" stroke-linecap="round"/>
+  <path d="M40 48H88" stroke="url(#pi-bus)" stroke-width="6.5" stroke-linecap="round"/>
+  <path d="M54 48V84M74 48V78C74 82 77 84 81 84" stroke="url(#pi-bus)" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="34" cy="34" r="7" fill="#a78bfa"/>
+  <circle cx="94" cy="34" r="7" fill="#60a5fa"/>
+  <circle cx="34" cy="94" r="7" fill="#f5b53d"/>
+  <circle cx="94" cy="94" r="7" fill="#19c39a"/>
+  <circle cx="64" cy="64" r="8" fill="#111318" stroke="#19c39a" stroke-width="3"/>
+  <circle cx="64" cy="64" r="3.2" fill="#19c39a"/>
 </svg>

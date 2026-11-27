@@ -350,43 +350,49 @@ test('sync_codex imports OAuth tokens at 0o600, validates before writing and pre
   assert.equal(stored['openai-codex'].expires, futureExp * 1000);
 
   fs.writeFileSync(path.join(stateRoot, 'models-catalog.json'), JSON.stringify([
-    { provider: 'openai-codex', model: 'gpt-6-astra', contextWindow: 272000, maxTokens: 128000, reasoning: true, input: ['text'] },
-    { provider: 'openai-codex', model: 'gpt-6.1-sol', contextWindow: 272000, maxTokens: 64000, reasoning: true, input: ['text'] },
+    { provider: 'openai-codex', model: 'gpt-5.4-codex', contextWindow: 272000, maxTokens: 128000, reasoning: true, input: ['text'] },
+    { provider: 'openai-codex', model: 'gpt-5.3-codex-spark', contextWindow: 128000, maxTokens: 64000, reasoning: true, input: ['text'] },
+    { provider: 'anthropic', model: 'claude-opus-4-6', contextWindow: 200000, maxTokens: 64000, reasoning: true, input: ['text'] },
     { provider: 'opencode-go', model: 'deepseek-v4-pro', contextWindow: 200000, maxTokens: 32000, reasoning: true, input: ['text'] },
   ]));
-  saveModelSettings(stateRoot, { models: { 'openai-codex/gpt-6-astra': { contextWindow: 400000 } } }, { agentDir, backupDir, syncPiModels: false });
+  saveModelSettings(stateRoot, { models: { 'openai-codex/gpt-5.4-codex': { contextWindow: 400000 } } }, { agentDir, backupDir, syncPiModels: false });
 
   const afterPiRefresh = enrichModels([
-    { provider: 'openai-codex', model: 'gpt-6-astra', contextWindow: 400000, maxTokens: 128000, reasoning: true, input: ['text'] },
-    { provider: 'openai-codex', model: 'gpt-6.1-sol', contextWindow: 272000, maxTokens: 64000, reasoning: true, input: ['text'] },
+    { provider: 'openai-codex', model: 'gpt-5.4-codex', contextWindow: 400000, maxTokens: 128000, reasoning: true, input: ['text'] },
+    { provider: 'openai-codex', model: 'gpt-5.3-codex-spark', contextWindow: 128000, maxTokens: 64000, reasoning: true, input: ['text'] },
+    { provider: 'anthropic', model: 'claude-opus-4-6', contextWindow: 200000, maxTokens: 64000, reasoning: true, input: ['text'] },
     { provider: 'opencode-go', model: 'deepseek-v4-pro', contextWindow: 200000, maxTokens: 32000, reasoning: true, input: ['text'] },
   ], stateRoot);
 
-  const astra = afterPiRefresh.find(m => m.model === 'gpt-6-astra');
-  const sol = afterPiRefresh.find(m => m.model === 'gpt-6.1-sol');
+  const codexMain = afterPiRefresh.find(m => m.model === 'gpt-5.4-codex');
+  const spark = afterPiRefresh.find(m => m.model === 'gpt-5.3-codex-spark');
+  const opus = afterPiRefresh.find(m => m.model === 'claude-opus-4-6');
   const og = afterPiRefresh.find(m => m.provider === 'opencode-go');
-  assert.equal(astra.baseContextWindow, 272000);
-  assert.equal(astra.defaultRecommendedThinking, 'xhigh');
-  assert.match(astra.description, /刹车/);
-  assert.match(sol.description, /防御性编程/);
+  assert.equal(codexMain.baseContextWindow, 272000);
+  assert.equal(codexMain.defaultRecommendedThinking, 'high');
+  assert.match(codexMain.description, /Code Review/);
+  assert.equal(spark.defaultRecommendedThinking, 'low');
+  assert.match(spark.description, /纯文本高速/);
+  assert.equal(opus.defaultRecommendedThinking, 'high');
+  assert.match(opus.description, /Claude Opus/);
   assert.match(og.description, /OpenCode Go/);
 
   fs.writeFileSync(path.join(agentDir, 'models.json'), JSON.stringify({
     providers: {
-      'openai-codex': { models: [{ id: 'gpt-6-astra', contextWindow: 512000, maxTokens: 128000 }] },
+      'openai-codex': { models: [{ id: 'gpt-5.4-codex', contextWindow: 512000, maxTokens: 128000 }] },
     },
   }));
   saveModelSettings(stateRoot, {
     models: {
-      'openai-codex/gpt-6-astra': { contextWindow: 1000000 },
-      'openai-codex/gpt-6.1-sol': { contextWindow: 1000000 },
+      'openai-codex/gpt-5.4-codex': { contextWindow: 1000000 },
+      'openai-codex/gpt-5.3-codex-spark': { contextWindow: 1000000 },
     },
   }, { agentDir, backupDir });
   const piUpdated = JSON.parse(fs.readFileSync(path.join(agentDir, 'models.json'), 'utf8'));
   assert.equal(piUpdated.providers['openai-codex'].models[0].contextWindow, 1000000);
-  assert.equal(piUpdated.providers['openai-codex'].modelOverrides['gpt-6.1-sol'].contextWindow, 1000000);
+  assert.equal(piUpdated.providers['openai-codex'].modelOverrides['gpt-5.3-codex-spark'].contextWindow, 1000000);
   const full1M = enrichModels([
-    { provider: 'openai-codex', model: 'gpt-6-astra', contextWindow: 1000000, maxTokens: 128000, reasoning: true, input: ['text'] },
+    { provider: 'openai-codex', model: 'gpt-5.4-codex', contextWindow: 1000000, maxTokens: 128000, reasoning: true, input: ['text'] },
   ], stateRoot);
   assert.match(full1M[0].description, /1M 上下文/);
 });

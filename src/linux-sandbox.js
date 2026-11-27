@@ -48,23 +48,36 @@ function addSystemEntry(flags, target, { exists, lstat, readlink }) {
   flags.push('--ro-bind', target, target);
 }
 
-function maskDir(flags, dir, exists) {
-  if (!dir || !exists(dir)) return;
-  flags.push('--perms', '0000', '--tmpfs', dir);
+function maskEntry(flags, target, { exists, lstat, isFileHint = false }) {
+  if (!target || !exists(target)) return;
+  let regularFile = isFileHint;
+  if (!regularFile) {
+    try {
+      const stat = lstat(target);
+      if (typeof stat?.isFile === 'function' && stat.isFile()) regularFile = true;
+    } catch {
+      return;
+    }
+  }
+  if (regularFile) {
+    flags.push('--ro-bind', '/dev/null', target);
+    return;
+  }
+  flags.push('--perms', '0000', '--tmpfs', target);
 }
 
-function maskStateRoot(flags, { stateRoot, workspace, tempDir, exists }) {
+function maskStateRoot(flags, { stateRoot, workspace, tempDir, exists, lstat, readOnly = false }) {
   if (!stateRoot || !exists(stateRoot)) return;
   const workspaceInside = inside(workspace, stateRoot);
   const tempInside = inside(tempDir, stateRoot);
   if (workspaceInside || tempInside) {
     flags.push('--tmpfs', stateRoot);
-    if (workspaceInside && exists(workspace)) flags.push('--bind', workspace, workspace);
+    if (workspaceInside && exists(workspace)) flags.push(readOnly ? '--ro-bind' : '--bind', workspace, workspace);
     if (tempInside && exists(tempDir)) flags.push('--bind', tempDir, tempDir);
     flags.push('--remount-ro', stateRoot);
     return;
   }
-  maskDir(flags, stateRoot, exists);
+  maskEntry(flags, stateRoot, { exists, lstat });
 }
 
 export function buildBwrapArgs(policy, executable, args, deps = {}) {
@@ -75,6 +88,7 @@ export function buildBwrapArgs(policy, executable, args, deps = {}) {
   const canonical = deps.canonicalPath;
   const mode = deps.mode;
   const privateDirectories = deps.privateDirectories || [];
+  const privateFiles = deps.privateFiles || [];
   const gitCommon = deps.gitCommonDir || null;
   const home = deps.homedir || os.homedir();
   const tmpRoot = deps.tmpdir || os.tmpdir();
@@ -105,38 +119,49 @@ export function buildBwrapArgs(policy, executable, args, deps = {}) {
       if (!inside(prefix, '/usr') && prefix !== '/') flags.push('--ro-bind', prefix, prefix);
     }
 
-    const wholeWorkspaceOwned = owned.some(value => value === workspace);
-    flags.push(wholeWorkspaceOwned ? '--bind' : '--ro-bind', workspace, workspace);
-    if (!wholeWorkspaceOwned) {
+    const readOnly = Boolean(policy.readOnly);
+    const wholeWorkspaceOwned = !readOnly && owned.some(value => value === workspace);
+    if (policy.allowWorkspaceRead === false) {
+      flags.push('--tmpfs', workspace, '--remount-ro', workspace);
+    } else {
+      flags.push(wholeWorkspaceOwned ? '--bind' : '--ro-bind', workspace, workspace);
+    }
+    if (!readOnly && !wholeWorkspaceOwned) {
       for (const item of uniqueExisting(owned, exists)) {
         if (item !== workspace) flags.push('--bind', item, item);
       }
     }
     if (exists(tempDir)) flags.push('--bind', tempDir, tempDir);
     if (inside(stateRoot, workspace)) {
-      maskStateRoot(flags, { stateRoot, workspace, tempDir, exists });
+      maskStateRoot(flags, { stateRoot, workspace, tempDir, exists, lstat, readOnly });
     }
     for (const dir of uniqueExisting(privateDirectories, exists)) {
-      if (inside(dir, workspace)) maskDir(flags, dir, exists);
+      if (inside(dir, workspace)) maskEntry(flags, dir, { exists, lstat });
+    }
+    for (const file of uniqueExisting(privateFiles, exists)) {
+      if (inside(file, workspace)) maskEntry(flags, file, { exists, lstat, isFileHint: true });
     }
   } else if (mode === 'dev') {
+    const readOnly = Boolean(policy.readOnly);
     flags.push('--ro-bind', '/', '/', '--dev', '/dev', '--proc', '/proc');
     const writable = uniqueExisting([
       tmpRoot,
       '/tmp',
-      gitCommon,
+      ...(readOnly ? [] : [gitCommon, workspace]),
       path.join(home, '.cache'),
       path.join(home, '.local/share/uv'),
       path.join(home, '.npm'),
-      workspace,
       tempDir,
     ], exists);
     for (const dir of writable) flags.push('--bind', dir, dir);
-    for (const dir of uniqueExisting(privateDirectories, exists)) maskDir(flags, dir, exists);
-    maskStateRoot(flags, { stateRoot, workspace, tempDir, exists });
+    for (const dir of uniqueExisting(privateDirectories, exists)) maskEntry(flags, dir, { exists, lstat });
+    for (const file of uniqueExisting(privateFiles, exists)) maskEntry(flags, file, { exists, lstat, isFileHint: true });
+    maskStateRoot(flags, { stateRoot, workspace, tempDir, exists, lstat, readOnly });
   } else {
-    flags.push('--bind', '/', '/', '--dev', '/dev', '--proc', '/proc');
-    maskStateRoot(flags, { stateRoot, workspace, tempDir, exists });
+    const readOnly = Boolean(policy.readOnly);
+    flags.push(readOnly ? '--ro-bind' : '--bind', '/', '/', '--dev', '/dev', '--proc', '/proc');
+    if (readOnly && exists(tempDir)) flags.push('--bind', tempDir, tempDir);
+    maskStateRoot(flags, { stateRoot, workspace, tempDir, exists, lstat, readOnly });
   }
 
   flags.push('--chdir', workspace, '--', executable, ...args);

@@ -5,13 +5,14 @@ import {
 import { bindTips, renderSpeed, drawSpeed, subscribeSpeed, closeSpeed, tickSpeed } from './charts.js';
 import { renderConversation, refreshTail } from './conversation.js';
 import { renderOverview, renderChips, renderList, toggleGroup } from './sidebar.js';
-import {
-  pairTools, renderLane, clearHead, renderHead, renderContext,
-  renderToolsTab, renderEventsTab, renderResultTab, renderInfoTab,
-} from './panels.js';
+import { pairTools, renderLane, clearHead, renderHead, renderContext } from './panels.js';
+import { renderToolsTab, renderEventsTab, renderResultTab, renderInfoTab } from './tabs.js';
+import { renderCollabNodes, renderChangesReviewBanner } from './collab-views.js';
 import { loadChanges, renderChanges } from './changes.js';
-import { closeMenu, createSessionActions, agentMenu, groupMenu, renderSystemDialog } from './dialogs.js';
+import { closeMenu, createSessionActions, agentMenu, groupMenu } from './dialogs.js';
+import { renderSystemDialog } from './sys-dialog.js';
 import { openSettingsDialog } from './settings.js';
+import { bindKeyboard, createStreamController } from './runtime.js';
 
 if (location.hash) history.replaceState(null, '', location.pathname);
 try { sessionStorage.removeItem('pi-dashboard-token'); } catch {}
@@ -23,7 +24,7 @@ const state = {
   paused: false, fetching: false, detailFetching: false, liveFetching: false, detail: null, recordsKey: '', renderedView: '',
   previous: new Map(), notify: store.get('notify', false), refreshedAt: null,
   sideHidden: store.get('sideHidden', null), panelHidden: store.get('panelHidden', null),
-  listRendered: false, listKey: '', changes: new Map(), sseActive: false,
+  listRendered: false, listKey: '', changes: new Map(), runs: new Map(), runsList: [], sseActive: false,
 };
 
 const narrow = () => innerWidth <= 760;
@@ -45,6 +46,22 @@ function switchPanelTab(ptab) {
   else syncSeg($('#ptabs'), 'ptab', ptab);
 }
 
+function focusFileDiff(filePath) {
+  const target = String(filePath || '').replace(/^\.?\//, '');
+  const tryOpen = () => {
+    for (const det of document.querySelectorAll('#p-changes details.cfile')) {
+      const title = det.querySelector('.fname')?.getAttribute('title') || '';
+      if (title === target || title.endsWith(`/${target}`) || title.includes(target)) {
+        det.open = true;
+        det.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        return true;
+      }
+    }
+    return false;
+  };
+  if (!tryOpen()) setTimeout(tryOpen, 400);
+}
+
 const listHandlers = {
   onSelect: select,
   onEditAgent: a => menuActions.onEdit(a),
@@ -54,7 +71,34 @@ const listHandlers = {
   onMoveAgent: (id, key) => menuActions.onMove(id, key).catch(err => showToast(err.message)),
 };
 
-const menuActions = createSessionActions({ state, post, refresh, onSelect: select, onSwitchTab: switchPanelTab, onToggleGroup: key => toggleGroup(key, state, listHandlers) });
+const stream = createStreamController({
+  state,
+  apiFetch,
+  applyAgentsPayload,
+  showError,
+  onStreamState: open => {
+    if (open && !state.paused) { $('#live').className = 'live'; $('#connection').textContent = '实时推送'; }
+  },
+});
+
+const menuActions = {
+  ...createSessionActions({
+    state,
+    post,
+    refresh: stream.refresh,
+    onSelect: select,
+    onSwitchTab: switchPanelTab,
+    onToggleGroup: key => toggleGroup(key, state, listHandlers),
+  }),
+  onJumpToFile: (filePath, sourceAgentId) => {
+    if (sourceAgentId && state.selected !== sourceAgentId && state.agents.some(a => a.id === sourceAgentId)) {
+      select(sourceAgentId);
+    }
+    if ($('#app').classList.contains('panel-hidden')) setPanel(true);
+    switchPanelTab('changes');
+    focusFileDiff(filePath);
+  },
+};
 state.actions = menuActions;
 
 function syncSelectedPool() {
@@ -107,13 +151,22 @@ function conversationTab(data, expanded) {
   return [renderConversation(data, expanded), note];
 }
 
+function onRunLoaded() {
+  state.recordsKey = '';
+  renderRecords();
+  if (state.detail && state.ptab === 'changes') renderPanel(state.detail);
+}
+
 function renderRecords() {
   const data = state.detail;
   if (!data) return;
   const records = $('#records');
   const box = $('#scroller');
+  const runId = data.agent.orchestration?.runId || '';
+  const runState = runId ? state.runs.get(runId)?.loading : null;
   const key = JSON.stringify([
     state.tab, state.hideTools, data.agent.sequence, data.agent.status,
+    data.agent.verification?.status, runId, runState, state.runsList.length,
     data.messages.length, data.messages.at(-1)?.id, data.live?.updatedAt,
     data.transcriptError, data.agent.lastText?.length,
   ]);
@@ -133,7 +186,7 @@ function renderRecords() {
   const [content, note] = state.tab === 'messages' ? conversationTab(data, expanded)
     : state.tab === 'tools' ? renderToolsTab(tools)
     : state.tab === 'events' ? renderEventsTab(data.agent, state, () => { state.recordsKey = ''; renderRecords(); })
-    : state.tab === 'result' ? renderResultTab(data.agent)
+    : state.tab === 'result' ? renderResultTab(data.agent, renderCollabNodes(data.agent, state, apiFetch, menuActions, onRunLoaded))
     : renderInfoTab(data.agent);
   records.classList.toggle('enter', fresh);
   if (fresh || state.tab !== 'messages') mount(records, content);
@@ -160,7 +213,11 @@ function renderPanel(data) {
   for (const view of document.querySelectorAll('[data-pview]')) view.hidden = view.dataset.pview !== state.ptab;
   syncSeg($('#ptabs'), 'ptab', state.ptab);
   if (state.ptab === 'context') renderContext(data, state.ptab);
-  if (state.ptab === 'changes') { loadChanges(data.agent.id, state, apiFetch); renderChanges(data, state, apiFetch); }
+  if (state.ptab === 'changes') {
+    renderChangesReviewBanner($('#p-changes-review'), data.agent, state, apiFetch, menuActions, onRunLoaded);
+    loadChanges(data.agent.id, state, apiFetch);
+    renderChanges(data, state, apiFetch);
+  }
 }
 
 async function refreshDetail() {
@@ -212,46 +269,6 @@ async function applyAgentsPayload(result) {
   showError(errs.length ? `${errs.length} 个会话读取失败：${errs.map(e => `${e.id.slice(0, 8)} ${e.error}`).join('；')}` : '');
 }
 
-let sse = null;
-let pollTimer = null;
-function startPoll() { if (!pollTimer) pollTimer = setInterval(() => { if (!state.paused) refresh(); }, 2000); }
-function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
-
-function startEventsStream() {
-  if (state.paused || typeof EventSource === 'undefined') { startPoll(); return; }
-  if (sse) return;
-  const source = new EventSource('/api/events', { withCredentials: true });
-  source.onopen = () => {
-    state.sseActive = true;
-    stopPoll();
-    if (!state.paused) { $('#live').className = 'live'; $('#connection').textContent = '实时推送'; }
-  };
-  source.onmessage = event => { if (!state.paused) { try { applyAgentsPayload(JSON.parse(event.data)); } catch (err) { console.error(err); } } };
-  source.onerror = () => {
-    state.sseActive = false;
-    source.close();
-    if (sse === source) sse = null;
-    if (!state.paused) startPoll();
-  };
-  sse = source;
-}
-
-async function refresh(force = false) {
-  if (state.fetching || (state.paused && !force)) return;
-  state.fetching = true;
-  try {
-    const result = await apiFetch('/api/agents');
-    await applyAgentsPayload(result);
-    if (!sse && !state.paused) startEventsStream();
-  } catch (error) {
-    $('#live').className = 'live failed';
-    $('#connection').textContent = '更新失败 · 保留上次数据';
-    showError(error.message);
-  } finally {
-    state.fetching = false;
-  }
-}
-
 function tick() {
   tickSpeed();
   for (const node of document.querySelectorAll('[data-ago]')) node.textContent = ago(node.dataset.ago);
@@ -291,14 +308,13 @@ function setPaused(value) {
   button.setAttribute('aria-pressed', String(value));
   button.title = value ? '继续更新 (P)' : '暂停更新 (P)';
   if (value) {
-    sse?.close(); sse = null; state.sseActive = false;
-    stopPoll();
+    stream.stopStream();
     closeSpeed();
     $('#live').className = 'live paused';
     $('#connection').textContent = '已暂停';
   } else {
-    refresh(true);
-    startEventsStream();
+    stream.refresh(true);
+    stream.startEventsStream();
     if (state.selected) subscribeSpeed(state.selected, false);
   }
 }
@@ -326,19 +342,15 @@ applyTheme(store.get('theme', null));
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme(store.get('theme', null)));
 $('#theme').addEventListener('click', () => {
   const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-  store.set('theme', next);
-  applyTheme(next);
-  rerenderCharts();
+  store.set('theme', next); applyTheme(next); rerenderCharts();
 });
 $('#notify').addEventListener('click', async () => {
   if (!('Notification' in window)) { showToast('当前浏览器不支持通知'); return; }
   if (!state.notify && Notification.permission !== 'granted' && await Notification.requestPermission() !== 'granted') { showToast('浏览器没有允许通知'); return; }
-  state.notify = !state.notify;
-  store.set('notify', state.notify);
-  syncNotifyButton();
+  state.notify = !state.notify; store.set('notify', state.notify); syncNotifyButton();
   showToast(state.notify ? '会话等待、完成或失败时会提醒你' : '已关闭提醒');
 });
-$('#settings-btn').addEventListener('click', () => openSettingsDialog($('#settings-dialog'), apiFetch, () => refresh(true)));
+$('#settings-btn').addEventListener('click', () => openSettingsDialog($('#settings-dialog'), apiFetch, () => stream.refresh(true)));
 $('#sys-btn').addEventListener('click', () => renderSystemDialog($('#sys-dialog'), apiFetch, false));
 $('#d-report').addEventListener('click', () => {
   const body = $('#d-report .p-report');
@@ -370,33 +382,9 @@ for (const dlg of document.querySelectorAll('dialog.dialog')) {
 document.addEventListener('pointerdown', event => { if (!$('#menu').hidden && !event.target.closest('#menu')) closeMenu(); });
 addEventListener('blur', closeMenu);
 $('#list').addEventListener('scroll', closeMenu);
-document.addEventListener('keydown', event => {
-  if (!$('#menu').hidden) {
-    const items = [...$('#menu').querySelectorAll(':scope > button:not(:disabled), :scope > .sub > button')];
-    const index = items.indexOf(document.activeElement);
-    if (event.key === 'Escape') { closeMenu(); return; }
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); items[(index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus(); return; }
-    return;
-  }
-  if (document.querySelector('dialog[open]') || event.metaKey || event.ctrlKey || event.altKey) return;
-  const isInput = /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName);
-  if (event.key === 'Escape' && event.target.id === 'search') { event.target.value = ''; event.target.blur(); renderList(state, listHandlers); return; }
-  if (isInput) return;
-  if (event.key === '/') { event.preventDefault(); if (narrow()) setSide(true); $('#search').focus(); }
-  else if (event.key === 'j' || event.key === 'ArrowDown') { event.preventDefault(); moveSelection(1); }
-  else if (event.key === 'k' || event.key === 'ArrowUp') { event.preventDefault(); moveSelection(-1); }
-  else if (event.key === 'e') { const a = state.detail?.agent || state.agents.find(x => x.id === state.selected); if (a) { event.preventDefault(); menuActions.onEdit(a); } }
-  else if (event.key === 'a') { const a = state.detail?.agent || state.agents.find(x => x.id === state.selected); if (a && (!working.has(a.status) || a.archived)) { event.preventDefault(); menuActions.onArchive([a.id], !a.archived, a.name || a.id.slice(0, 8)).catch(err => showToast(err.message)); } }
-  else if (event.key === 'p') setPaused(!state.paused);
-  else if (event.key === '[') setSide($('#app').classList.contains('side-hidden'));
-  else if (event.key === ']') setPanel($('#app').classList.contains('panel-hidden'));
-  else if (event.key === ',') { event.preventDefault(); openSettingsDialog($('#settings-dialog'), apiFetch, () => refresh(true)); }
-  else if (event.key === '?') { event.preventDefault(); $('#help-dialog').showModal(); }
-  else if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
-    const a = state.agents.find(x => x.id === state.selected);
-    const node = document.querySelector('.row[aria-current="true"]');
-    if (a && node) { event.preventDefault(); const box = node.getBoundingClientRect(); agentMenu(a, box.left + 40, box.bottom, state, menuActions); }
-  }
+bindKeyboard({
+  state, working, narrow, setSide, setPanel, setPaused, moveSelection, renderList, listHandlers,
+  menuActions, agentMenu, closeMenu, openSettingsDialog, apiFetch, refresh: stream.refresh,
 });
 let resizeTimer;
 addEventListener('resize', () => {
@@ -417,7 +405,7 @@ bindResizers(() => {
 syncNotifyButton();
 applyLayout();
 requestAnimationFrame(() => { syncSeg($('#views'), 'tab', state.tab); syncSeg($('#ptabs'), 'ptab', state.ptab); });
-refresh(true).then(applyLayout);
+stream.refresh(true).then(applyLayout);
 async function pollLive() {
   const cur = state.detail;
   if (state.paused || state.detailFetching || state.liveFetching || !cur || !working.has(cur.agent?.status)) return;

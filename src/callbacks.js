@@ -122,7 +122,12 @@ export function callbackText(event) {
   const head = `[pi-server callback] agent ${event.agentId} event=${event.type} sequence=${event.sequence}`;
   const next = `Continue with wait_agent(agentIds=["${event.agentId}"], after={"${event.agentId}": ${event.sequence}}) or read_agent.`;
   if (event.type === 'question') return `${head}\nBlocking question ${event.questionId}:\n${String(event.question).slice(0, 4000)}\nAnswer with reply_question(questionId="${event.questionId}").`;
-  if (event.type === 'settled') return `${head} status=${event.status}${event.error ? `\nError: ${String(event.error).slice(0, 1000)}` : ''}\nLast reply (verify actual changes before accepting):\n${String(event.text || '').slice(-3000)}\n${next}`;
+  if (event.type === 'settled') {
+    const verifyLine = event.verification && ['verified', 'failed', 'skipped'].includes(event.verification.status)
+      ? `\nVerification: ${event.verification.status} (${event.verification.passedCount ?? 0}/${event.verification.totalCount ?? 0} passed)`
+      : '';
+    return `${head} status=${event.status}${verifyLine}${event.error ? `\nError: ${String(event.error).slice(0, 1000)}` : ''}\nLast reply (verify actual changes before accepting):\n${String(event.text || '').slice(-3000)}\n${next}`;
+  }
   if (event.type === 'message') return `${head}\nReport:\n${String(event.message).slice(0, 3000)}\n${next}`;
   return `${head}\n${String(event.reason || event.error || '').slice(0, 1000)}\n${next}`;
 }
@@ -139,6 +144,7 @@ export function eventSnapshot(event) {
     ...(event.message ? { message: String(event.message).slice(0, 3000) } : {}),
     ...(event.reason ? { reason: String(event.reason).slice(0, 1000) } : {}),
     ...(event.error ? { error: String(event.error).slice(0, 1000) } : {}),
+    ...(event.verification ? { verification: event.verification } : {}),
   };
 }
 

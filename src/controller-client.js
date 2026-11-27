@@ -9,6 +9,7 @@ import { defaultMaxAgents } from './manager.js';
 import { processAlive, readJsonSafe } from './storage.js';
 
 const script = fileURLToPath(new URL('./controller.js', import.meta.url));
+const clientPackageVersion = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 export function normalizeParentInfo(input, fallback) {
   const source = input && typeof input === 'object' ? input : {};
   const result = {};
@@ -46,11 +47,12 @@ export function parentIdentity(env = process.env, clientName = '') {
   });
 }
 export class ControllerClient extends EventEmitter {
-  constructor(root, info, parentId = randomUUID()) {
+  constructor(root, info, parentId = randomUUID(), parentInfo = null) {
     super();
     this.storage = { root };
     this.info = info;
     this.parentId = parentId;
+    this.parentInfo = parentInfo;
     this.closed = false;
     this.httpAgent = new http.Agent({ keepAlive: true, maxFreeSockets: 4 });
   }
@@ -67,7 +69,7 @@ export class ControllerClient extends EventEmitter {
       this.httpAgent.destroy();
       this.httpAgent = new http.Agent({ keepAlive: true, maxFreeSockets: 4 });
       this.info = latest;
-      await this.request('attach', { pid: process.pid, parent: parentIdentity() });
+      await this.request('attach', { pid: process.pid, parent: this.parentInfo || parentIdentity() });
       return this.request(method, values, signal);
     }
   }
@@ -95,18 +97,22 @@ export class ControllerClient extends EventEmitter {
   interrupt(agentId) { return this.call('interrupt', { agentId }); }
   closeAgent(agentId) { return this.call('closeAgent', { agentId }); }
   resume(agentId, options = {}) { return this.call('resume', { agentId, ...options }); }
-  rebindParent(parent) { return this.call('attach', { pid: process.pid, parent }); }
+  rebindParent(parent) {
+    this.parentInfo = normalizeParentInfo(parent, this.parentInfo);
+    return this.call('attach', { pid: process.pid, parent: this.parentInfo });
+  }
   health() { return this.call('health', {}); }
   readMessages(values) { return this.call('readMessages', values); }
   ackMessages(agentId, messageIds) { return this.call('ackMessages', { agentId, messageIds }); }
   updatePolicy(values) { return this.call('updatePolicy', values); }
   adoptTask(taskId) { return this.call('adoptTask', { taskId }); }
   async bindSession(parent, agentIds) {
-    try { return await this.call('bindSession', { parent, agentIds }); }
+    this.parentInfo = normalizeParentInfo(parent, this.parentInfo);
+    try { return await this.call('bindSession', { parent: this.parentInfo, agentIds }); }
     catch (error) {
       if (error.message !== 'Unsupported controller method') throw error;
-      await this.rebindParent(parent);
-      return { identity: parent, boundAgents: [], legacyController: true };
+      await this.rebindParent(this.parentInfo);
+      return { identity: this.parentInfo, boundAgents: [], legacyController: true };
     }
   }
   async watch() {
@@ -146,7 +152,11 @@ async function probe(root, piAgentDir) {
   const expectedAgentDir = piAgentDir || process.env.PI_CODING_AGENT_DIR || '';
   const stalePath = health?.scriptPath && !fs.existsSync(health.scriptPath);
   const wrongAgentDir = health?.piAgentDir !== undefined && health.piAgentDir !== expectedAgentDir;
-  if ((stalePath || wrongAgentDir) && (health.activeAgents ?? 0) === 0 && (health.totalAgents ?? 0) === 0) {
+  const wrongVersion = health?.version !== undefined && health.version !== clientPackageVersion;
+  const idleForReplace = health?.liveProcesses !== undefined
+    ? (health.liveProcesses === 0 && (health.activeParents ?? 0) === 0 && (health.inflightOps ?? 0) === 0)
+    : ((health.activeAgents ?? 0) === 0 && (health.totalAgents ?? 0) === 0);
+  if ((stalePath || wrongAgentDir || wrongVersion) && idleForReplace) {
     try { process.kill(info.pid, 'SIGTERM'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
     for (let i = 0; i < 30 && processAlive(info.pid); i++) await new Promise(resolve => setTimeout(resolve, 50));
     return null;
@@ -163,12 +173,13 @@ export async function connectController({ root, executable = 'pi', maxAgents = d
     const child = spawn(process.execPath, [script], { detached: true, stdio: ['ignore', log, log], env });
     fs.closeSync(log); child.unref(); let failure; child.on('error', error => { failure = error; });
     for (let index = 0; index < 50; index++) {
-      info = await probe(root); if (info) break;
+      info = await probe(root, piAgentDir); if (info) break;
       if (failure) throw failure;
       await new Promise(resolve => setTimeout(resolve, 100));
     }
     if (!info) throw new Error('Independent Pi controller failed to start; inspect controller.log.');
   }
-  const client = new ControllerClient(root, info);
-  await client.call('attach', { pid: process.pid, parent: parentIdentity() }); return client;
+  const initialParent = parentIdentity();
+  const client = new ControllerClient(root, info, undefined, initialParent);
+  await client.call('attach', { pid: process.pid, parent: initialParent }); return client;
 }

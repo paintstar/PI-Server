@@ -4,10 +4,11 @@ export function agentPolicy(input = {}, model) {
   if (!Array.isArray(allowedModels) || !allowedModels.length || allowedModels.some(value => !value.provider || !value.model)) throw new Error('allowedModels must name authorized provider/model pairs');
   const policy = { allowedModels, maxModelRequests: input.maxModelRequests ?? 100000, maxTotalTokens: input.maxTotalTokens ?? 1e12,
     maxRuntimeMs: input.maxRuntimeMs ?? 604800000, maxOutputTokens: input.maxOutputTokens ?? 128000, allowNetwork: input.allowNetwork ?? true,
+    readOnly: input.readOnly ?? false, nonInteractive: input.nonInteractive ?? false, allowWorkspaceRead: input.allowWorkspaceRead ?? true,
     ...(input.sandboxMode ? { sandboxMode: input.sandboxMode } : {}) };
   if (policy.sandboxMode && !['strict', 'dev', 'bypass'].includes(policy.sandboxMode)) throw new Error('sandboxMode must be strict, dev or bypass');
   for (const key of ['maxModelRequests', 'maxTotalTokens', 'maxRuntimeMs', 'maxOutputTokens']) if (!Number.isSafeInteger(policy[key]) || policy[key] <= 0) throw new Error(`${key} must be a positive integer`);
-  if (typeof policy.allowNetwork !== 'boolean') throw new Error('allowNetwork must be boolean');
+  for (const key of ['allowNetwork', 'readOnly', 'nonInteractive', 'allowWorkspaceRead']) if (typeof policy[key] !== 'boolean') throw new Error(`${key} must be boolean`);
   return policy;
 }
 export function assertModelAllowed(policy, model) {

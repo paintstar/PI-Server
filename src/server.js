@@ -23,6 +23,7 @@ import { spawnReminder, waitReminder, waitCommandFor, sessionIdPattern } from '.
 import { buildSettingsPayload, enrichModels, filterModelProfiles } from './model-settings.js';
 import { inspectOpencodeConfig } from './opencode-config.js';
 import { sandboxHealth } from './tool-sandbox.js';
+import { installOrchestrationTools } from './orchestration-tools.js';
 
 const execFileAsync = promisify(execFile);
 const projectRoot = fileURLToPath(new URL('..', import.meta.url));
@@ -33,8 +34,14 @@ Pi external subagents supplement the host agent's capabilities, enabling large-s
 const id = z.string().uuid();
 const text = z.string().min(1).max(24000);
 const safeSessionId = () => z.string().trim().min(1).max(200).regex(sessionIdPattern);
-const policyShape = z.object({ allowedModels: z.array(z.object({ provider: z.string().min(1), model: z.string().min(1) })).min(1).max(50).optional(), maxModelRequests: z.number().int().min(1).max(1000000).optional(), maxTotalTokens: z.number().int().min(1).max(1e12).optional(), maxRuntimeMs: z.number().int().min(1000).max(2147483647).optional(), maxOutputTokens: z.number().int().min(1).max(1000000).optional(), allowNetwork: z.boolean().optional(), sandboxMode: z.enum(['strict', 'dev', 'bypass']).optional() }).describe('Optional runtime overrides. Omit maxModelRequests, maxTotalTokens and maxRuntimeMs unless the human user explicitly requested a hard cap.');
+const policyShape = z.object({ allowedModels: z.array(z.object({ provider: z.string().min(1), model: z.string().min(1) })).min(1).max(50).optional(), maxModelRequests: z.number().int().min(1).max(1000000).optional(), maxTotalTokens: z.number().int().min(1).max(1e12).optional(), maxRuntimeMs: z.number().int().min(1000).max(2147483647).optional(), maxOutputTokens: z.number().int().min(1).max(1000000).optional(), allowNetwork: z.boolean().optional(), sandboxMode: z.enum(['strict', 'dev', 'bypass']).optional(), readOnly: z.boolean().optional(), nonInteractive: z.boolean().optional(), allowWorkspaceRead: z.boolean().optional() }).describe('Optional runtime overrides. Omit maxModelRequests, maxTotalTokens and maxRuntimeMs unless the human user explicitly requested a hard cap.');
 const thinkingShape = z.enum(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
+const acceptanceCheckShape = z.object({
+  name: z.string().trim().min(1).max(100).optional(),
+  command: z.string().trim().min(1).max(4000),
+  expectExit: z.number().int().min(0).max(255).default(0),
+  timeoutMs: z.number().int().min(1000).max(300000).default(60000),
+});
 const parentSessionShape = () => z.object({
   kind: z.enum(['antigravity', 'codex', 'claude', 'opencode', 'mcp']).optional(),
   sessionId: safeSessionId(),
@@ -45,6 +52,7 @@ const spawnShape = {
   requestId: id.optional(), policy: policyShape.optional(), cwd: z.string().min(1), prompt: text, provider: z.string().min(1), model: z.string().min(1), name: z.string().max(100).optional(),
   ownedPaths: z.array(z.string().min(1)).min(1).max(100), context: z.string().max(40000).default(''),
   workspaceMode: z.enum(['auto', 'worktree', 'shared']).default('auto'), baseRef: z.string().optional(), thinking: thinkingShape.optional(),
+  acceptanceChecks: z.array(acceptanceCheckShape).min(1).max(10).optional(),
   antigravitySessionId: safeSessionId().optional(), opencodeSessionId: safeSessionId().optional(), parentSession: parentSessionShape().optional(),
 };
 
@@ -337,6 +345,7 @@ export async function createServer(options = {}) {
   installTaskTool(server, manager, spawnShape, taskStore);
   installCommunication(server, manager, register);
   callbacks = installCallbacks(server, manager, register);
+  installOrchestrationTools({ register, manager, callbacksRef, resolveSessionId, server, schemas: { id, text, thinkingShape, safeSessionId, parentSessionShape } });
   return { server, manager, taskStore };
 }
 

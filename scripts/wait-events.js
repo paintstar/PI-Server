@@ -106,6 +106,10 @@ if (fs.existsSync(root)) {
     if (error?.code !== 'ERR_FEATURE_UNAVAILABLE_ON_PLATFORM') throw error;
     watcherHandle = fs.watch(root, onFsChange);
   }
+  watcherHandle?.on('error', () => {
+    try { watcherHandle?.close(); } catch {}
+    watcherHandle = null;
+  });
 }
 
 const deadline = Date.now() + timeoutSec * 1000;

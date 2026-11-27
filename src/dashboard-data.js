@@ -1,7 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { processAlive, readTail, atomicWriteJson, readJsonSafe, ownerLockAlive } from './storage.js';
-import { estimateRoundedTokens } from './token-estimate.js';
+import {
+  collectRuntimeEnvironment, contextAnalysis, estimateTokens, extractVerification,
+  pullRequestLinks, readRun, readRuns, requestSpeeds, summarizeActivity, transcriptMessage,
+} from './dashboard-insights.js';
 
 export const defaultDashboardPort = 3141;
 export const workingStatuses = new Set(['starting', 'running', 'finishing']);
@@ -11,7 +14,7 @@ export const isActiveStatus = status => activeStatuses.has(status);
 const active = activeStatuses;
 const working = new Set(['starting', 'running', 'waiting', 'finishing']);
 export const isAgentId = id => /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id);
-export { readTail };
+export { readTail, transcriptMessage, requestSpeeds, estimateTokens, contextAnalysis, pullRequestLinks, summarizeActivity };
 
 const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
@@ -32,6 +35,10 @@ function resolveRecordState(directory, record, mark = {}) {
   return { controllerAlive, baseStatus, status, marked, archived };
 }
 
+function statStamp(file) {
+  try { const s = fs.statSync(file); return `${s.mtimeMs}:${s.size}`; } catch { return '0'; }
+}
+
 export function parseDashboardPort(raw = process.env.PI_DASHBOARD_PORT) {
   if (raw === undefined || raw === null || raw === '') return defaultDashboardPort;
   const text = String(raw).trim();
@@ -45,11 +52,7 @@ export async function readRunningDashboard(root, { checkPidMatch = true, timeout
   const info = readJsonSafe(path.join(root, 'dashboard.json'));
   if (!info || (checkPidMatch && !processAlive(info.pid))) return null;
   let url;
-  try { url = new URL(info.url); }
-  catch (error) {
-    if (error instanceof TypeError) return null;
-    throw error;
-  }
+  try { url = new URL(info.url); } catch (error) { if (error instanceof TypeError) return null; throw error; }
   if (url.hostname !== '127.0.0.1') throw new Error('Invalid local dashboard address');
   try {
     const response = await fetch(new URL('/api/health', url), {
@@ -65,120 +68,10 @@ export async function readRunningDashboard(root, { checkPidMatch = true, timeout
   }
 }
 
-/** Bound every string inside tool arguments so one huge write cannot flood the page. */
-function clipValue(value, limit = 6000) {
-  if (typeof value === 'string') return value.length > limit ? `${value.slice(0, limit)}\n…（已截断 ${value.length - limit} 字）` : value;
-  if (Array.isArray(value)) return value.slice(0, 50).map(item => clipValue(item, limit));
-  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).slice(0, 40).map(([key, item]) => [key, clipValue(item, limit)]));
-  return value;
-}
-const textOf = blocks => blocks.filter(b => b.type === 'text').map(b => b.text).join('\n');
-
-/** Project one saved session entry for display. Thinking text is shown; provider signatures and encrypted reasoning never are. */
-export function transcriptMessage(entry, index = 0) {
-  if (entry.type !== 'message' || !entry.message) return null;
-  const m = entry.message;
-  const blocks = Array.isArray(m.content) ? m.content : [{ type: 'text', text: String(m.content || '') }];
-  const base = { id: entry.id || `${entry.timestamp}-${index}`, role: m.role, time: entry.timestamp };
-  if (m.role === 'toolResult') {
-    const text = textOf(blocks);
-    return { ...base, toolCallId: m.toolCallId, toolName: m.toolName, isError: !!m.isError, durationMs: m.durationMs,
-      text: text.length > 6000 ? `…\n${text.slice(-6000)}` : text, diff: typeof m.details?.diff === 'string' ? m.details.diff.slice(0, 12000) : undefined,
-      answer: typeof m.details?.answer === 'string' ? m.details.answer.slice(0, 6000) : undefined };
-  }
-  const thinkingBlocks = blocks.filter(b => b.type === 'thinking');
-  const thinking = thinkingBlocks.map(b => b.thinking || '').filter(Boolean).join('\n\n');
-  const calls = blocks.filter(b => b.type === 'toolCall').map(b => ({ id: b.id, name: b.name, arguments: clipValue(b.arguments || {}) }));
-  const text = textOf(blocks).slice(-12000);
-  if (!text && !calls.length && !thinkingBlocks.length && m.role !== 'assistant') return null;
-  return { ...base, text, calls, startedAt: typeof m.timestamp === 'number' ? new Date(m.timestamp).toISOString() : undefined,
-    thinking: thinking.slice(-8000) || undefined, thinkingRedacted: thinkingBlocks.length > 0 && !thinking,
-    stopReason: m.stopReason, error: m.stopReason === 'error' ? String(m.errorMessage || '').slice(0, 2000) : undefined };
-}
-
-/** Output speed of each finished model request: output tokens over request wall time, from the saved session. */
-export function requestSpeeds(entries, limit = 40) {
-  const speeds = [];
-  for (const entry of entries) {
-    const m = entry.message;
-    if (entry.type !== 'message' || m?.role !== 'assistant' || !m.usage || typeof m.timestamp !== 'number') continue;
-    const end = Date.parse(entry.timestamp); const seconds = (end - m.timestamp) / 1000;
-    if (!(seconds > 0.2) || !m.usage.output) continue;
-    speeds.push({ at: entry.timestamp, output: m.usage.output, seconds: Math.round(seconds * 100) / 100, tps: Math.round(m.usage.output / seconds * 10) / 10 });
-  }
-  return speeds.slice(-limit);
-}
-
-export function estimateTokens(text = '') {
-  return estimateRoundedTokens(text);
-}
-const sectionNames = { preamble: '角色说明', tools: '工具说明', rules: '规则', docs: '文档', addendum: '附加说明', project_context: '项目说明', skills: '技能列表', cwd: '工作目录' };
-/** 上下文分析：每次请求实际送进模型的 token（输入 + 缓存读写），以及按来源估算的构成。 */
-export function contextAnalysis(head, entries, contextWindow) {
-  const system = [...head, ...entries].find(e => e.type === 'message' && e.message?.role === 'system')?.message;
-  const sections = Object.entries(system?.sections || {}).map(([key, value]) => ({ key, name: sectionNames[key] || key, tokens: estimateTokens(String(value)) })).filter(s => s.tokens > 0);
-  const parts = { user: 0, assistant: 0, thinking: 0, toolCalls: 0, toolResults: 0 };
-  const series = []; let compactions = 0;
-  for (const entry of entries) {
-    if (entry.type === 'compaction' || entry.type === 'compaction_summary') compactions++;
-    const m = entry.message; if (entry.type !== 'message' || !m) continue;
-    const blocks = Array.isArray(m.content) ? m.content : [{ type: 'text', text: String(m.content || '') }];
-    for (const b of blocks) {
-      const size = estimateTokens(b.type === 'thinking' ? b.thinking || '' : b.type === 'toolCall' ? JSON.stringify(b.arguments || {}) : b.text || '');
-      if (m.role === 'user') parts.user += size; else if (m.role === 'toolResult') parts.toolResults += size;
-      else if (m.role === 'assistant') parts[b.type === 'thinking' ? 'thinking' : b.type === 'toolCall' ? 'toolCalls' : 'assistant'] += size;
-    }
-    if (m.role === 'assistant' && m.usage) {
-      const used = (m.usage.input || 0) + (m.usage.cacheRead || 0) + (m.usage.cacheWrite || 0);
-      if (used) series.push({ at: entry.timestamp, used, cached: m.usage.cacheRead || 0, output: m.usage.output || 0, reasoning: m.usage.reasoning || 0 });
-    }
-  }
-  const latest = series.at(-1);
-  return { contextWindow: contextWindow || null, used: latest?.used || 0, cached: latest?.cached || 0, peak: Math.max(0, ...series.map(s => s.used)),
-    series: series.slice(-120), sections, parts, compactions, requests: series.length };
-}
-/** 会话里出现过的 GitHub PR 链接（创建、查看或合并时的输出），按首次出现排序。 */
-export function pullRequestLinks(entries) {
-  const found = new Map(); const pattern = /https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/g;
-  for (const entry of entries) {
-    const m = entry.message; if (entry.type !== 'message' || !m || m.role === 'system') continue;
-    const blocks = Array.isArray(m.content) ? m.content : [{ type: 'text', text: String(m.content || '') }];
-    const text = blocks.map(b => b.text || (b.type === 'toolCall' ? JSON.stringify(b.arguments || {}) : '')).join('\n');
-    for (const match of text.matchAll(pattern)) {
-      const url = match[0]; const item = found.get(url) || { url, repo: match[1], number: Number(match[2]), firstAt: entry.timestamp, merged: false, created: false };
-      if (/merged|已合并|gh pr merge/i.test(text)) item.merged = true;
-      if (/gh pr create|Creating pull request|created pull request/i.test(text)) item.created = true;
-      item.lastAt = entry.timestamp; found.set(url, item);
-    }
-  }
-  return [...found.values()].slice(-30);
-}
-
-const minute = 60 * 1000;
-/** Compact progress figures for the list: tool totals, last step and per-minute tool activity of the last 30 minutes. */
-export function summarizeActivity(events, now = Date.now()) {
-  const ends = events.filter(e => e.type === 'tool_execution_end');
-  const buckets = Array(30).fill(0);
-  for (const e of ends) {
-    const age = Math.floor((now - Date.parse(e.time)) / minute);
-    if (age >= 0 && age < 30) buckets[29 - age]++;
-  }
-  const last = events.at(-1);
-  // Closing or resuming later must not stretch the time the agent actually worked.
-  const lastWork = events.findLast(e => !['closed', 'resumed', 'ready'].includes(e.type));
-  return { lastWorkAt: lastWork?.time, toolCalls: ends.length, toolErrors: ends.filter(e => e.isError).length, buckets,
-    lastEvent: last && { type: last.type, time: last.time, toolName: last.toolName } };
-}
-
-/** Read-only projection of existing MCP records; never claim, resume or command an agent. */
 export class DashboardData {
-  constructor(root) { this.root = path.resolve(root); }
-  directory(id) {
-    if (!isAgentId(id)) throw new Error('Invalid agent ID');
-    return path.join(this.root, id);
-  }
+  constructor(root) { this.root = path.resolve(root); this.listCache = new Map(); }
+  directory(id) { if (!isAgentId(id)) throw new Error('Invalid agent ID'); return path.join(this.root, id); }
   get marksFile() { return path.join(this.root, 'dashboard-marks.json'); }
-  /** 面板自己的整理数据：每个会话的手动状态与所在分组，以及分组改名。旧版是 {id: {status, at}}，读取时兼容。 */
   marks() {
     try {
       const stat = fs.statSync(this.marksFile);
@@ -193,30 +86,16 @@ export class DashboardData {
       throw error;
     }
   }
-  saveMarks(marks) {
-    atomicWriteJson(this.marksFile, marks);
-    this.marksCache = null;
-  }
-  ensureAgentExists(id) {
-    const dir = this.directory(id);
-    fs.statSync(path.join(dir, 'agent.json'));
-    return dir;
-  }
-  loadRecord(id) {
-    const directory = this.ensureAgentExists(id);
-    const record = JSON.parse(fs.readFileSync(path.join(directory, 'agent.json'), 'utf8'));
-    return { directory, record };
-  }
+  saveMarks(marks) { atomicWriteJson(this.marksFile, marks); this.marksCache = null; this.listCache.clear(); }
+  ensureAgentExists(id) { const dir = this.directory(id); fs.statSync(path.join(dir, 'agent.json')); return dir; }
+  loadRecord(id) { const directory = this.ensureAgentExists(id); return { directory, record: JSON.parse(fs.readFileSync(path.join(directory, 'agent.json'), 'utf8')) }; }
   sessionFileBytes(directory, record) {
     if (!record?.sessionFile) return 0;
     try {
       const file = fs.realpathSync(record.sessionFile);
       const allowed = fs.realpathSync(path.join(directory, 'sessions'));
       return file.startsWith(allowed + path.sep) ? fs.statSync(file).size : 0;
-    } catch (error) {
-      if (error?.code === 'ENOENT') return 0;
-      throw error;
-    }
+    } catch (error) { if (error?.code === 'ENOENT') return 0; throw error; }
   }
   validateOrganizePatch(patch) {
     if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw new Error('Invalid metadata');
@@ -295,7 +174,6 @@ export class DashboardData {
     const { marked, archived } = resolveRecordState(fs.existsSync(directory) ? directory : null, record, entry);
     return { title: entry.title || null, note: entry.note || null, pinned: Boolean(entry.pinned), archived, archivedAt: archived ? entry.archivedAt || null : null, group: entry.group || null, statusMark: marked ? entry.status : null };
   }
-  /** 给分组起一个面板里显示的名字；name 为空时恢复默认名。 */
   renameGroup(key, name) {
     if (typeof key !== 'string' || !key || key.length > 300 || FORBIDDEN_KEYS.has(key)) throw new Error('Invalid group');
     if (name != null && (typeof name !== 'string' || name.length > 60)) throw new Error('Invalid name');
@@ -304,7 +182,6 @@ export class DashboardData {
     this.saveMarks(marks);
     return { key, name: name?.trim() || null };
   }
-  /** 模型目录由管理进程写入，用来显示上下文窗口。 */
   catalog() {
     const file = path.join(this.root, 'models-catalog.json');
     try {
@@ -320,20 +197,12 @@ export class DashboardData {
     const dir = path.join(this.root, 'watchers');
     let files;
     try { files = fs.readdirSync(dir).filter(name => name.endsWith('.json')); }
-    catch (error) {
-      if (error?.code === 'ENOENT') return [];
-      throw error;
-    }
+    catch (error) { if (error?.code === 'ENOENT') return []; throw error; }
     const watchers = [];
     for (const file of files) {
       const raw = readJsonSafe(path.join(dir, file));
       if (!raw || !Number.isInteger(raw.pid) || !processAlive(raw.pid)) continue;
-      watchers.push({
-        pid: raw.pid,
-        sessionId: raw.sessionId || null,
-        agentIds: Array.isArray(raw.agentIds) ? raw.agentIds : [],
-        startedAt: raw.startedAt || null,
-      });
+      watchers.push({ pid: raw.pid, sessionId: raw.sessionId || null, agentIds: Array.isArray(raw.agentIds) ? raw.agentIds : [], startedAt: raw.startedAt || null });
     }
     return watchers;
   }
@@ -342,15 +211,8 @@ export class DashboardData {
     if (!raw) return null;
     const deliveredSeq = Math.max(raw.deliveredSeq || 0, raw.antigravityDeliveredSeq || 0);
     return {
-      host: raw.host || null,
-      enabled: !!raw.enabled,
-      antigravitySessionId: raw.antigravitySessionId || null,
-      antigravityDeliveredSeq: deliveredSeq,
-      deliveredSeq,
-      opencodeSessionId: raw.opencodeSessionId || null,
-      claudeSessionId: raw.claudeSessionId || null,
-      codexThreadId: raw.codexThreadId || null,
-      lastObservedBy: raw.lastObservedBy || null,
+      host: raw.host || null, enabled: !!raw.enabled, antigravitySessionId: raw.antigravitySessionId || null, antigravityDeliveredSeq: deliveredSeq, deliveredSeq,
+      opencodeSessionId: raw.opencodeSessionId || null, claudeSessionId: raw.claudeSessionId || null, codexThreadId: raw.codexThreadId || null, lastObservedBy: raw.lastObservedBy || null,
     };
   }
   snapshot(id, watchers = null, preloaded = null) {
@@ -367,25 +229,21 @@ export class DashboardData {
     const activity = summarizeActivity(events);
     const callback = this.callbackInfo(id);
     const cbSid = callback?.antigravitySessionId || callback?.opencodeSessionId;
-    const parentInfo = record.parentInfo || (cbSid
-      ? { kind: callback?.opencodeSessionId ? 'opencode' : 'antigravity', sessionId: cbSid, cwd: record.workspace?.sourceCwd || record.workspace?.cwd }
-      : undefined);
+    const parentInfo = record.parentInfo || (cbSid ? { kind: callback?.opencodeSessionId ? 'opencode' : 'antigravity', sessionId: cbSid, cwd: record.workspace?.sourceCwd || record.workspace?.cwd } : undefined);
     const activeWatcherList = watchers ?? this.activeWatchers();
-    const watcherActive = activeWatcherList.some(w =>
-      w.agentIds.includes(id)
-      || (parentInfo?.sessionId && w.sessionId === parentInfo.sessionId)
-      || (cbSid && w.sessionId === cbSid)
-    );
-    return { id, name: mark.title || record.name, rawName: record.name, title: mark.title || null, note: mark.note || null, pinned: Boolean(mark.pinned), archived, archivedAt: archived ? mark.archivedAt || null : null,
+    const watcherActive = activeWatcherList.some(w => w.agentIds.includes(id) || (parentInfo?.sessionId && w.sessionId === parentInfo.sessionId) || (cbSid && w.sessionId === cbSid));
+    return {
+      id, name: mark.title || record.name, rawName: record.name, title: mark.title || null, note: mark.note || null, pinned: Boolean(mark.pinned), archived, archivedAt: archived ? mark.archivedAt || null : null,
       status, recordedStatus: record.status, controllerAlive, marked, movedTo: mark.group, parentId: record.parentId, contextWindow: this.contextWindow(record.model), parentInfo,
-      callback, watcherActive,
-      model: record.model, thinking: record.thinking, temporaryModel: record.restoreModel,
+      callback, watcherActive, model: record.model, thinking: record.thinking, temporaryModel: record.restoreModel,
       cwd: record.workspace?.cwd, sourceCwd: record.workspace?.sourceCwd, workspaceMode: record.workspace?.mode,
       ownedPaths: record.ownedPaths, createdAt: record.createdAt, updatedAt: record.updatedAt,
       sequence: record.sequence, usage: record.usage, lastText: record.lastText?.slice(-12000), error: record.error,
+      verification: extractVerification(record, true), orchestration: record.orchestration || null,
       currentTools: active.has(status) ? [...pending.values()] : [],
       questions: events.filter(e => e.type === 'question' && questionIds.has(e.questionId)).map(e => ({ questionId: e.questionId, question: e.question, time: e.time })),
-      recentMessage: events.findLast(e => e.type === 'message')?.message?.slice(-2000), activity, events };
+      recentMessage: events.findLast(e => e.type === 'message')?.message?.slice(-2000), activity, events,
+    };
   }
   sessionEntries(directory, record, limit = 500) {
     if (!record.sessionFile) return [];
@@ -409,24 +267,35 @@ export class DashboardData {
     try {
       const directory = this.directory(id);
       const record = readJsonSafe(path.join(directory, 'agent.json'));
-      if (!record) return null;
-      return requestSpeeds(this.sessionEntries(directory, record, 60), 1)[0] || null;
-    } catch (error) {
-      if (error?.code === 'ENOENT' || error instanceof SyntaxError) return null;
-      throw error;
-    }
+      return record ? requestSpeeds(this.sessionEntries(directory, record, 60), 1)[0] || null : null;
+    } catch (error) { if (error?.code === 'ENOENT' || error instanceof SyntaxError) return null; throw error; }
   }
   list() {
     if (!fs.existsSync(this.root)) return { agents: [], errors: [], refreshedAt: new Date().toISOString() };
     const watchers = this.activeWatchers();
-    const agents = []; const errors = [];
+    const watchersKey = JSON.stringify(watchers);
+    const marksStamp = statStamp(this.marksFile);
+    const seen = new Set(); const agents = []; const errors = [];
     for (const id of fs.readdirSync(this.root).filter(isAgentId)) {
-      try { const { events, ...agent } = this.snapshot(id, watchers); if (working.has(agent.status)) agent.speed = this.latestSpeed(id); agents.push(agent); }
-      catch (error) { errors.push({ id, error: error.message }); }
+      seen.add(id);
+      const dir = path.join(this.root, id);
+      const stamp = `${statStamp(path.join(dir, 'agent.json'))}|${statStamp(path.join(dir, 'events.jsonl'))}|${statStamp(path.join(dir, 'owner.lock'))}|${statStamp(path.join(this.root, 'callbacks', `${id}.json`))}|${marksStamp}|${watchersKey}`;
+      const cached = this.listCache.get(id);
+      if (cached && cached.stamp === stamp && !working.has(cached.agent.status)) { agents.push(cached.agent); continue; }
+      try {
+        const { events, ...agent } = this.snapshot(id, watchers);
+        if (agent.verification?.checks) agent.verification = { ...agent.verification, checks: undefined };
+        if (working.has(agent.status)) agent.speed = this.latestSpeed(id);
+        this.listCache.set(id, { stamp, agent });
+        agents.push(agent);
+      } catch (error) { this.listCache.delete(id); errors.push({ id, error: error.message }); }
     }
+    for (const id of this.listCache.keys()) if (!seen.has(id)) this.listCache.delete(id);
     agents.sort((a, b) => (b.updatedAt || b.createdAt || '').localeCompare(a.updatedAt || a.createdAt || ''));
     return { agents, errors, groupNames: Object.fromEntries(Object.entries(this.marks().groups).map(([key, value]) => [key, value.name])), refreshedAt: new Date().toISOString() };
   }
+  listRuns(limit = 100) { return readRuns(this.root, limit); }
+  getRun(runId) { return readRun(this.root, runId); }
   systemStatus() {
     const rawController = readJsonSafe(path.join(this.root, 'controller.json'));
     const controller = rawController
@@ -434,34 +303,21 @@ export class DashboardData {
       : null;
     const watchers = this.activeWatchers();
     const listed = this.list();
-    const counts = { total: listed.agents.length, working: 0, waiting: 0, idle: 0, completed: 0, failed: 0, closed: 0, disconnected: 0, stopped: 0, interrupted: 0, archived: 0, errors: listed.errors.length };
+    const counts = { total: listed.agents.length, working: 0, waiting: 0, idle: 0, completed: 0, completedVerified: 0, completedUnverified: 0, failed: 0, closed: 0, disconnected: 0, stopped: 0, interrupted: 0, archived: 0, errors: listed.errors.length };
+    const statusMap = { waiting: 'waiting', idle: 'idle', completed: 'completed', 'completed-verified': 'completedVerified', 'completed-unverified': 'completedUnverified', failed: 'failed', closed: 'closed', disconnected: 'disconnected', stopped: 'stopped', interrupted: 'interrupted' };
     for (const agent of listed.agents) {
       if (agent.archived) counts.archived++;
       if (isWorkingStatus(agent.status)) counts.working++;
-      else if (agent.status === 'waiting') counts.waiting++;
-      else if (agent.status === 'idle') counts.idle++;
-      else if (agent.status === 'completed') counts.completed++;
-      else if (agent.status === 'failed') counts.failed++;
-      else if (agent.status === 'closed') counts.closed++;
-      else if (agent.status === 'disconnected') counts.disconnected++;
-      else if (agent.status === 'stopped') counts.stopped++;
-      else if (agent.status === 'interrupted') counts.interrupted++;
+      else if (statusMap[agent.status]) counts[statusMap[agent.status]]++;
     }
-    return { controller, modelCount: this.catalog().length, watchers, counts, dashboardPid: process.pid, refreshedAt: new Date().toISOString() };
+    const envInfo = collectRuntimeEnvironment(this.root, listed.agents);
+    return { controller, modelCount: this.catalog().length, watchers, counts, runsCount: this.listRuns().length, sandbox: envInfo.sandbox, hosts: envInfo.hosts, dashboardPid: process.pid, refreshedAt: new Date().toISOString() };
   }
   contextWindow(model) { return this.catalog().find(m => m.provider === model?.provider && m.model === model?.model)?.contextWindow; }
   liveState(id) {
     const { directory, record } = this.loadRecord(id);
     const { status } = resolveRecordState(directory, record, this.marks().agents[id] || {});
-    return {
-      id,
-      status,
-      sequence: record.sequence ?? 0,
-      updatedAt: record.updatedAt,
-      usage: record.usage,
-      sessionBytes: this.sessionFileBytes(directory, record),
-      live: working.has(status) ? this.live(directory) : null,
-    };
+    return { id, status, sequence: record.sequence ?? 0, updatedAt: record.updatedAt, usage: record.usage, sessionBytes: this.sessionFileBytes(directory, record), live: working.has(status) ? this.live(directory) : null };
   }
   detail(id) {
     const loaded = this.loadRecord(id);
@@ -471,10 +327,7 @@ export class DashboardData {
     let transcriptError; let speeds = []; let context = null; let pullRequests = [];
     try {
       const entries = this.sessionEntries(directory, record);
-      for (const entry of entries) {
-        const message = transcriptMessage(entry, messages.length);
-        if (message) messages.push(message);
-      }
+      for (const entry of entries) { const message = transcriptMessage(entry, messages.length); if (message) messages.push(message); }
       speeds = requestSpeeds(entries);
       context = contextAnalysis(this.sessionHead(directory, record), entries, agent.contextWindow);
       pullRequests = pullRequestLinks(entries);
@@ -483,7 +336,6 @@ export class DashboardData {
   }
   live(directory) {
     const live = readJsonSafe(path.join(directory, 'live.json'));
-    if (!live) return null;
-    return Date.now() - Date.parse(live.updatedAt) < 10 * 60 * 1000 ? live : null;
+    return live && Date.now() - Date.parse(live.updatedAt) < 10 * 60 * 1000 ? live : null;
   }
 }

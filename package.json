@@ -1,10 +1,18 @@
 {
   "name": "pi-server",
-  "version": "1.7.0",
+  "version": "2.0.0",
   "license": "MIT",
   "type": "module",
   "description": "面向 Antigravity、Claude Code、Codex 与 OpenCode 的 Pi 多模型子代理调度平台（MCP 服务与实时 Web 调度台）",
-  "author": "mumuxsy",
+  "author": "shin",
+  "contributors": [
+    {
+      "name": "mumuxsy"
+    }
+  ],
+  "bin": {
+    "pi-server": "bin/pi-server.js"
+  },
   "homepage": "https://github.com/paintstar/PI-Server#readme",
   "repository": {
     "type": "git",
@@ -30,6 +38,7 @@
     "node": ">=22.19"
   },
   "files": [
+    "bin/",
     "src/",
     "dashboard/",
     "extensions/",

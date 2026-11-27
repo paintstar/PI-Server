@@ -1,8 +1,25 @@
 # 版本更新记录
 
-本文档按时间倒序记录 Pi Server 各公开版本的主要功能、架构演进与关键修复。
+本文档按时间倒序记录 Pi Server 各公开版本的主要功能、架构演进与关键修复（`1.0.0`–`1.7.0` 为上游 `mumuxsy/pi-subagents` 基线历史）。
 
-## [1.7.0] - 2026-11-14
+## [2.0.0] - 2026-11-27
+
+### 架构分代、生态扩展与品牌收口
+- 项目全面演进为 **Pi Server v2.0**（作者 `shin`，保留 MIT 双版权致谢上游 `mumuxsy/pi-subagents`），统一包名、MCP 服务、四端配置、新四端总线 SVG Logo（`docs/assets/logo.svg` 单源复用）与作品集级中英文文档。
+- 新增 **OpenCode 第四端适配**（`install:opencode` / `uninstall:opencode`、保留注释的 JSONC 读写、`SKILL.md` 自动安装、会话绑定、统一单调游标唤醒与沙箱凭据隔离）。
+- 新增 **Linux / Windows WSL2 `bubblewrap` (`bwrap`) 双平台沙箱后端**与 GitHub Actions macOS/Linux 双平台 CI 流水线。
+
+### 高层多模型协作原语与机械化验收闭环（24 → 27 MCP 工具）
+- 新增 **`consult`**（一次性只读第二意见）、**`council`**（2–4 模型并行会诊 + 确定性共识/分歧/置信度合成 + `cleanProfile` + `minQuorum` 降级）与 **`cross_review`**（含未跟踪新建文件 diff、默认拒同模型、空 diff 零成本短路、Fail-Closed 裁决归一化与 `blocker` 强升），全系支持 `dryRun`、`budgetCapUsd` 与 `unknownPricingModels` 预检。
+- 新增沙箱内机械化 **`acceptanceChecks`** 闭环：`completed-verified` / `completed-unverified` 五级状态语义、8KB 滑动缓冲与 300s 总超时、`interrupt`/`closeAgent` 零死锁中止、修完自动重验，以及 MCP Task `failed` + `isError: true` 同步映射。
+- 新增 `policy.readOnly` / `nonInteractive` / `allowWorkspaceRead` 与双平台内核只读隔离，支持脏工作区多模型并发无 `pathsOverlap` 冲突。
+
+### 后端加固、Web 控制台 v2.0 与产品化 CLI
+- 完成 8 项后端加固：屏蔽 `~/.claude`、`~/.claude.json`、`~/.gemini`、`~/.aws`、`~/.kube`、`~/.gnupg`（`bwrap` 普通文件 `/dev/null` 绑定防 `ENOTDIR`）；`Buffer.concat` + 512KB 修复 UTF-8 跨分片拼接；`agentChanges` 纳入未跟踪新建文件；三零条件控制器热替换；重连保留 `parentInfo`；`spawn` 失败清 Map 与 `interruptedRun` 防状态覆写；`manager.read()` 内存尾窗缓存；补齐主流开源/商业模型画像。
+- 升级零外部框架实时控制台 **Pi Server · 调度台 v2.0**：后端拆分共享单实例 SSE 广播器（`src/dashboard-sse.js`）与 `mtimeMs` 缓存（`src/dashboard-insights.js`），新增 `/api/runs`、`/api/runs/:runId`、`/logo.svg` 与 `/api/system` 四端×双沙箱矩阵；前端拆分 `runtime.js` / `sys-dialog.js` / `tabs.js` / `collab-views.js`，落地会诊对比网格、审查结论联动 Diff、验收命令明细与明暗双主题 + 375px 窄屏适配。
+- 新增统一命令行入口 `bin/pi-server.js`（`serve`/`install`/`uninstall`/`dashboard`/`doctor [--json]`/`ask`）、`src/bin-resolve.js` 根治 `fnm_multishells` 临时路径与 MOTD 杂讯问题，并补充 `scripts/seed-demo-state.js` 脱敏演示夹具与 `scripts/verify-v2.js` 真机验收脚本。
+
+## [1.7.0] - 2026-11-14（上游基线）
 
 ### 新增与升级
 - 项目正式更名为 **Pi Subagents**（Web 控制台名 **Pi 调度台**），解除早期与单一 Codex 宿主的命名绑定，统一面向 Google Antigravity、Claude Code 与 OpenAI Codex 提供多模型子代理调度。

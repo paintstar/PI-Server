@@ -208,6 +208,8 @@ test('install.js builds and removes Antigravity plugin bundle cleanly', t => {
   const hooks = JSON.parse(fs.readFileSync(path.join(pluginRoot, 'hooks.json'), 'utf8'));
   assert.equal(manifest.name, 'pi-server');
   assert.equal(manifest.displayName, 'Pi Server');
+  assert.equal(manifest.version, '2.0.0');
+  assert.equal(manifest.author.name, 'shin');
   assert.ok(mcp.mcpServers['pi-server'].args[0].endsWith(path.join('src', 'server.js')));
   assert.equal(hooks['pi-server-callbacks'].PreInvocation.length, 1);
   assert.equal(hooks['pi-server-callbacks'].Stop.length, 1);
